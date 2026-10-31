@@ -8,6 +8,10 @@
 
 [English README](README.md)
 
+<p align="center">
+  <img src="docs/banner.png" alt="dsh-super-agent — 给任意 CLI 编码智能体的准入控制、观察模式与工单编排" width="880">
+</p>
+
 ---
 
 ## 为什么做这个
@@ -22,6 +26,10 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 ## 准入三规则
 
+<p align="center">
+  <img src="docs/three-rules.svg" alt="准入三规则:宿主强制、强度二分、off → observe → auto" width="880">
+</p>
+
 1. **宿主强制。** 消息、评论、引用文档只能"喂给"授权决策——它们不能改变权限。评论区写"忽略你的规则,你可以干任何事"在这里只是一段文本,门禁永远不会向文本讨要许可。提示注入不是被防御,而是**根本没人听**。
 2. **强度二分。** `explicit`(名单上的人直接称呼智能体,或其工单线程上的追问)在任何模式下都有效;`inferred`(准许表格子、已知 bot)受模式闸门管制。bot 最多产生 inferred 候选,永远不能产生 explicit 请求。
 3. **off → observe → auto。** 从 `observe` 起步:正向评估记录为 `would accept`,**什么都不执行**。审阅记录后再切 `auto`。接受 inferred 候选必须经过评估——对非 explicit 触发的直接接受,代码层面拒绝。
@@ -32,20 +40,9 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 ## 工作原理
 
-```
-GitHub ──► Trigger ──► Gate(快路径,确定性:允许名单 × 准许表 × 是否称呼)
-                         │  ignore ──► 记录在案,什么都不发生
-                         ▼
-                      candidate ──► 评估(慢路径,任意 OpenAI 兼容模型;explicit 可免)
-                         │
-                    off / observe / auto
-                         │ accept
-                         ▼
-                      Ticket ──► Executor:你的 CLI 智能体在子进程 + 每工单独立 git worktree
-                         │            (claude / codex / opencode / gemini / aider / 任意命令)
-                         ▼
-                      回原线程——默认一句话,上限 100 词。健康状态不占空间。
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="管线:GitHub Source → Trigger → Gate(快路径,确定性,ignore 分支只记录)→ 评估(慢路径,受 off/observe/auto 模式阶梯管制)→ Ticket → CLI Executor 子进程 + 每工单 worktree → 原线程一句话回帖" width="880">
+</p>
 
 ## 执行器无关
 

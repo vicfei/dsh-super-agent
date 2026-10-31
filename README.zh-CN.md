@@ -62,8 +62,8 @@ GitHub ──► Trigger ──► Gate(快路径,确定性:允许名单 × 准�
 | 组件 | 状态 |
 |---|---|
 | 域类型(Trigger / Policy / AdmissionTable / Decision) | ✅ v0.0.1 |
-| 确定性门禁 + off/observe/auto 决议 | ✅ v0.0.1(15 个测试) |
-| GitHub Source(轮询 issues / PR 评论 / 提及) | 🔜 里程碑 1 |
+| 确定性门禁 + off/observe/auto 决议 | ✅ v0.0.1 |
+| GitHub Source(轮询 issues / PR 评论 / 提及,重启不重放) | ✅ v0.1.0 |
 | SQLite 单写者 Engine + Ticket 生命周期 | 🔸 里程碑 2 |
 | CLI Executor(子进程 + worktree) | 🔸 里程碑 3 |
 | 评估层(任意 OpenAI 兼容端点) | 🔸 里程碑 3 |
@@ -72,7 +72,23 @@ GitHub ──► Trigger ──► Gate(快路径,确定性:允许名单 × 准�
 
 ## 快速开始
 
-还没有——垂直切片落在里程碑 1–3。Watch 本仓库,或读 [docs/ROADMAP.md](docs/ROADMAP.md) 了解节奏。
+轮询+分类回路今天就能跑——指向任意仓库,看门禁工作(默认 observe 模式:**什么都不执行**,inferred 候选只记录为 `would accept`):
+
+```bash
+git clone https://github.com/vicfei/dsh-super-agent && cd dsh-super-agent
+npm install
+cp examples/policy.json policy.json   # 把你的登录名放进 allowedList
+export GITHUB_TOKEN=ghp_…             # PAT:repo 读权限(回复上线后需评论写权限)
+npm run poll -- --repo you/your-repo --agent-login your-login --config policy.json
+```
+
+```
+[ACCEPT]        EXPLICIT     issue   github:you/your-repo/issues/7  by you     → accepted (allowed you addressing agent)
+[WOULD-ACCEPT]  INFERRED     issue_comment github:you/your-repo/issues/7  by you → shadow record only, nothing executed
+[IGNORE]        NOT-ADMITTED issue_comment github:you/your-repo/issues/7  by stranger
+```
+
+执行器派发落在里程碑 3;见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ## 对比
 

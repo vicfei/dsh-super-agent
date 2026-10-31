@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "allowedList": ["vicfei"],
+  "botList": ["github-actions", "dependabot"],
+  "acceptMode": "observe",
+  "table": [
+    { "scope": "issue",          "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
+    { "scope": "issue_comment",  "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
+    { "scope": "pr",             "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
+    { "scope": "pr_comment",     "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
+    { "scope": "review_comment", "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
+    { "scope": "ci",             "listedNotAddressing": "ignore",   "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" }
+  ]
+}

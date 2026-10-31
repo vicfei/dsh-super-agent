@@ -62,8 +62,8 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | Piece | Status |
 |---|---|
 | Domain types (Trigger / Policy / AdmissionTable / Decision) | ✅ v0.0.1 |
-| Deterministic gate + off/observe/auto resolution | ✅ v0.0.1 (15 tests) |
-| GitHub Source (poll issues / PR comments / mentions) | 🔜 milestone 1 |
+| Deterministic gate + off/observe/auto resolution | ✅ v0.0.1 |
+| GitHub Source (poll issues / PR comments / mentions, restart-safe read position) | ✅ v0.1.0 |
 | SQLite single-writer Engine + Ticket lifecycle | 🔸 milestone 2 |
 | CLI Executor (subprocess + worktree) | 🔸 milestone 3 |
 | Assessment (any OpenAI-compatible endpoint) | 🔸 milestone 3 |
@@ -72,7 +72,23 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 
 ## Quick start
 
-Not yet — the vertical slice lands in milestone 1–3. Watch the repo, or read [docs/ROADMAP.md](docs/ROADMAP.md) for what ships when.
+The poll-and-classify loop runs today — point it at any repo and watch the gate work (observe mode by default: **nothing executes**, inferred candidates are only recorded as `would accept`):
+
+```bash
+git clone https://github.com/vicfei/dsh-super-agent && cd dsh-super-agent
+npm install
+cp examples/policy.json policy.json   # put your login in allowedList
+export GITHUB_TOKEN=ghp_…             # PAT: repo read (comments-write when replies land)
+npm run poll -- --repo you/your-repo --agent-login your-login --config policy.json
+```
+
+```
+[ACCEPT]        EXPLICIT     issue   github:you/your-repo/issues/7  by you     → accepted (allowed you addressing agent)
+[WOULD-ACCEPT]  INFERRED     issue_comment github:you/your-repo/issues/7  by you → shadow record only, nothing executed
+[IGNORE]        NOT-ADMITTED issue_comment github:you/your-repo/issues/7  by stranger
+```
+
+Executor dispatch lands in milestone 3; see [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Comparison
 

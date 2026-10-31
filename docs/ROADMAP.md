@@ -2,12 +2,13 @@
 
 Vertical slice first: one Source, one gate, one executor, one reply channel. Everything else waits until the slice is honest.
 
-## Milestone 1 — GitHub Source (in progress)
+## Milestone 1 — GitHub Source (done)
 
-- Poll GitHub issues / issue comments / PR comments / review comments / mentions via REST (no App required for v0; PAT + `gh` fallback)
-- Trigger dedup (read position persisted; restart never replays)
-- Thread ids (`github:owner/repo/issues/<n>` etc.), author bot detection (`[bot]` logins, App slugs)
-- Delivery: reply into the originating thread
+- [x] Poll GitHub issues / issue comments / PR comments / review comments / mentions via REST (PAT, no App required)
+- [x] Trigger dedup (read position persisted per feed; restart never replays)
+- [x] Thread ids (`github:owner/repo/issues/<n>` etc.), author bot detection (`[bot]` logins, App accounts)
+- [x] Delivery: reply posting into the originating thread + 100-word clip discipline (orchestration itself lands with the Engine)
+- [x] Runner: poll → gate → resolution, one line per trigger; live-smoked against this repo's own issues
 
 ## Milestone 2 — Engine + Tickets (SQLite)
 

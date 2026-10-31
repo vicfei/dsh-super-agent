@@ -65,8 +65,8 @@ GitHub ──► Trigger ──► Gate(快路径,确定性:允许名单 × 准�
 | 确定性门禁 + off/observe/auto 决议 | ✅ v0.0.1 |
 | GitHub Source(轮询 issues / PR 评论 / 提及,重启不重放) | ✅ v0.1.0 |
 | SQLite 单写者 Engine + Ticket 生命周期(stop/resume/重验,outbox 回帖) | ✅ v0.2.0 |
-| CLI Executor(子进程 + worktree) | 🔸 里程碑 3 |
-| 评估层(任意 OpenAI 兼容端点) | 🔸 里程碑 3 |
+| CLI Executor——任意 agent 子进程 + 每工单 git worktree(`work` 命令) | ✅ v0.3.0 |
+| LLM 评估层——任意 OpenAI 兼容端点,失败关闭,仅 inferred 调用 | ✅ v0.3.0 |
 | 面板(只列"等人处理") | 🔸 里程碑 4 |
 | 飞书 / Slack 源、auto-merge、投机执行、Watchdog | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
 
@@ -88,7 +88,15 @@ npm run poll -- --repo you/your-repo --agent-login your-login --config policy.js
 [IGNORE]        NOT-ADMITTED issue_comment github:you/your-repo/issues/7  by stranger
 ```
 
-执行器派发落在里程碑 3;见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+执行器派发今天也能跑——任意 CLI 子进程,每工单一个 git worktree:
+
+```bash
+cp examples/executor.json executor.json    # 命令里可用 $DSH_DIR/$DSH_PROMPT_FILE/…
+npm run work -- --repo you/your-repo --executor-config executor.json
+npm run tickets                            # 阶段:queued / working / needs-person / ended
+```
+
+`claude`、`codex`、`opencode`、`aider` 或任意 shell 命令都可以当 Worker;30 分钟后台上限(超时杀整个进程组)、Worker 槽位、按名封锁的命令、报告回帖到原线程。评估层用 `--assessment llm`(+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`)接真实模型:只对 inferred 候选调用,explicit 永不等待,出错失败关闭判 negative。
 
 ## 对比
 

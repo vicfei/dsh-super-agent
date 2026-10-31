@@ -19,11 +19,13 @@ Vertical slice first: one Source, one gate, one executor, one reply channel. Eve
 - [x] Self-echo filter: posted comment ids recorded, never re-ingested as triggers (live-verified)
 - [x] CLI: `poll [--post]` persists into the engine and drains reply effects into real comments; `tickets` / `tickets stop <id>`
 
-## Milestone 3 — Executor + Assessment
+## Milestone 3 — Executor + Assessment (done)
 
-- Config-driven executor: any CLI in a subprocess (`claude`, `codex`, `opencode`, `gemini`, `aider`, custom), per-ticket `git worktree`, background job cap (30 min), slot limit with +1 for a person's message
-- Assessment: any OpenAI-compatible endpoint; positive/negative; refuses direct accept of inferred candidates
-- Environment variables without credentials; blocked commands fail by name
+- [x] Config-driven executor: any CLI in a subprocess, per-ticket `git worktree` + branch `dsh/ticket-<id>` (`-B` re-prepare is idempotent for resumed tickets), prompt via file, env carries DSH_DIR/PROMPT_FILE/TICKET/THREAD/REPO/AUTHOR — absolute paths, no credentials injected
+- [x] Assignments in the Engine; ticket stages queued / working / needs-person / ended; a ready report ends the Ticket completed (new work opens a new ticket); a failed one waits for a person — no automatic retry loop
+- [x] 30-min default timeout kills the whole process group; `maxWorkers` slots per run; blocked commands refuse by name
+- [x] Assessment: any OpenAI-compatible endpoint, called only for inferred candidates (explicit never waits); HTTP/parse/network failures fail closed to negative
+- [x] `work` CLI command: claim → prepare → execute → report → drain outbox (live-smoked on this repo, including resume → re-claim → re-run)
 
 ## Milestone 4 — Panel + launch
 

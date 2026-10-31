@@ -1,13 +1,18 @@
-// CLI — poll persists into the Engine; tickets lists / stops. Token from env, never stored.
-// Subcommands: poll [--post] | tickets [stop <id>]
+// CLI — poll (Source → gate → optional LLM assessment → Engine), work (claim → subprocess →
+// report → drain), tickets (list / stop). Token and API keys come from the environment only.
 
 import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
 import type { Policy } from "./domain.js";
 import { Engine } from "./engine.js";
+import { classify, formatOutcome } from "./runner.js";
+import { evaluateGate } from "./gate.js";
+import type { Assessor } from "./assess.js";
+import { llmAssessor, stubAssessor } from "./assess.js";
 import { GitHubClient } from "./github/client.js";
 import { GitHubSource } from "./github/source.js";
-import { classify, formatOutcome } from "./runner.js";
+import { Executor, type ExecutorConfig } from "./executor.js";
+import { runWork } from "./work.js";
 
 function die(msg: string): never {
   console.error(msg);
@@ -20,18 +25,23 @@ const { values: args, positionals } = parseArgs({
     repo: { type: "string" },
     "agent-login": { type: "string" },
     config: { type: "string", default: "policy.json" },
+    "executor-config": { type: "string", default: "executor.json" },
     db: { type: "string", default: ".state/engine.db" },
-    assessment: { type: "string", default: "positive" },
+    assessment: { type: "string", default: "stub-positive" }, // stub-positive | stub-negative | llm
+    "assess-base-url": { type: "string" },
+    "assess-model": { type: "string" },
     token: { type: "string" },
     post: { type: "boolean", default: false },
   },
 });
 
 const command = positionals[0] ?? "poll";
-const assessment = args.assessment === "negative" ? "negative" : "positive";
 const engine = new Engine(args.db);
 
 try {
+  const token = args.token ?? process.env.GITHUB_TOKEN;
+  const client = new GitHubClient({ token: token || undefined });
+
   if (command === "poll") {
     if (!args.repo) die("--repo owner/name is required");
     if (!args["agent-login"]) die("--agent-login <login> is required (mention detection)");
@@ -42,22 +52,58 @@ try {
       die(`cannot read policy config ${args.config}: ${e instanceof Error ? e.message : e}`);
     }
     engine.setPolicyIfChanged(policy);
-    const token = args.token ?? process.env.GITHUB_TOKEN;
-    const client = new GitHubClient({ token: token || undefined });
-    const source = new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client });
 
+    const assessor: Assessor =
+      args.assessment === "llm"
+        ? llmAssessor({
+            baseUrl: args["assess-base-url"] ?? process.env.ASSESS_BASE_URL ?? "",
+            model: args["assess-model"] ?? process.env.ASSESS_MODEL ?? "",
+            apiKey: process.env.ASSESS_API_KEY ?? process.env.OPENAI_API_KEY,
+          })
+        : stubAssessor(args.assessment === "stub-negative" ? "negative" : "positive");
+    if (args.assessment === "llm" && (!args["assess-base-url"] && !process.env.ASSESS_BASE_URL)) {
+      die("--assess llm requires --assess-base-url or ASSESS_BASE_URL");
+    }
+
+    const source = new GitHubSource({ repo: args.repo, agentLogin: args["agent-login"], client });
     const { triggers, next } = await source.collect(engine.positions(), { exclude: engine.selfPosted() });
-    const batch = triggers.map((t) => classify(t, policy, assessment));
+
+    const batch = [];
+    for (const t of triggers) {
+      // Only inferred candidates reach the (potentially slow, potentially costly) assessment —
+      // explicit never waits on it, and the gate's rejects never call it (docs/002).
+      const gate = evaluateGate(policy, t);
+      const assessment = gate.strength === "inferred" ? await assessor.assess(t) : "positive";
+      batch.push(classify(t, policy, assessment));
+    }
     for (const o of batch) console.log(formatOutcome(o));
 
     const report = engine.ingest(batch, next);
     if (batch.length === 0) console.log("no new triggers");
     for (const r of report.refusals) console.log(`[REFUSED] ${r}`);
     console.log(
-      `— fresh=${report.fresh} duplicates=${report.duplicates} ticketsOpened=${report.ticketsOpened} resumed=${report.resumed} (acceptMode=${policy.acceptMode}, policy v${policy.version})`,
+      `— fresh=${report.fresh} duplicates=${report.duplicates} ticketsOpened=${report.ticketsOpened} resumed=${report.resumed} (acceptMode=${policy.acceptMode}, policy v${policy.version}, assess=${args.assessment})`,
     );
 
-    if (args.post) await drain(engine, client, args.repo!);
+    if (args.post) {
+      const { drainReplyEffects } = await import("./work.js");
+      await drainReplyEffects(engine, client, args.repo!);
+    }
+  } else if (command === "work") {
+    if (!args.repo) die("--repo owner/name is required");
+    let execCfg: ExecutorConfig;
+    try {
+      execCfg = JSON.parse(readFileSync(args["executor-config"], "utf8")) as ExecutorConfig;
+    } catch (e) {
+      die(`cannot read executor config ${args["executor-config"]}: ${e instanceof Error ? e.message : e}`);
+    }
+    if (token === undefined || token === "") console.warn("[work] no GITHUB_TOKEN — reports stay queued in the outbox");
+    const executor = new Executor(execCfg);
+    const reports = await runWork(engine, executor, args.repo, token ? client : null);
+    if (reports.length === 0) console.log("no claimable tickets");
+    for (const r of reports) {
+      console.log(`#${r.ticketId} [${r.outcome}] ${r.detail}`);
+    }
   } else if (command === "tickets") {
     // argv: cli tickets stop <id> → positionals ["tickets", "stop", "<id>"]
     const stopId = positionals[1] === "stop" && positionals[2] !== undefined ? Number(positionals[2]) : undefined;
@@ -76,33 +122,8 @@ try {
       }
     }
   } else {
-    die(`unknown command: ${command} (poll | tickets)`);
+    die(`unknown command: ${command} (poll | work | tickets)`);
   }
 } finally {
   engine.close();
-}
-
-/** Execute due reply effects after commit — the outbox drain (docs/007). */
-async function drain(engine: Engine, client: GitHubClient, repo: string): Promise<void> {
-  const due = engine.takeDue();
-  for (const fx of due) {
-    if (fx.kind !== "reply") {
-      engine.completeEffect(fx.id); // unknown kinds complete silently in v0
-      continue;
-    }
-    const p = fx.payload as { issueNumber: number | null; body: string };
-    if (p.issueNumber === null) {
-      engine.failEffect(fx.id, `cannot resolve issue number from thread`, false);
-      continue;
-    }
-    try {
-      const { id } = await client.postIssueComment(repo, p.issueNumber, p.body);
-      engine.completeEffect(fx.id);
-      engine.markSelfPosted(id); // never re-ingest our own comment as a trigger
-      console.log(`[POSTED] ${fx.key} → ${repo}#${p.issueNumber}`);
-    } catch (e) {
-      engine.failEffect(fx.id, e instanceof Error ? e.message : String(e));
-      console.error(`[POST-FAILED] ${fx.key}: ${e instanceof Error ? e.message : e} (will back off)`);
-    }
-  }
 }

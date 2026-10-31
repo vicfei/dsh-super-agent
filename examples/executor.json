@@ -1,0 +1,8 @@
+{
+  "command": "claude -p \"$(cat \"$DSH_PROMPT_FILE\")\"",
+  "repoDir": ".",
+  "workRoot": ".state/work",
+  "timeoutMs": 1800000,
+  "maxWorkers": 1,
+  "blockedCommands": ["sudo", "rm -rf /", "curl | sh"]
+}

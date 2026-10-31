@@ -64,7 +64,7 @@ GitHub ──► Trigger ──► Gate(快路径,确定性:允许名单 × 准�
 | 域类型(Trigger / Policy / AdmissionTable / Decision) | ✅ v0.0.1 |
 | 确定性门禁 + off/observe/auto 决议 | ✅ v0.0.1 |
 | GitHub Source(轮询 issues / PR 评论 / 提及,重启不重放) | ✅ v0.1.0 |
-| SQLite 单写者 Engine + Ticket 生命周期 | 🔸 里程碑 2 |
+| SQLite 单写者 Engine + Ticket 生命周期(stop/resume/重验,outbox 回帖) | ✅ v0.2.0 |
 | CLI Executor(子进程 + worktree) | 🔸 里程碑 3 |
 | 评估层(任意 OpenAI 兼容端点) | 🔸 里程碑 3 |
 | 面板(只列"等人处理") | 🔸 里程碑 4 |

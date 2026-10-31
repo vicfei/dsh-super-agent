@@ -102,6 +102,16 @@ describe("GitHubSource.poll", () => {
     const out = await source.poll();
     expect(out[0].author).toMatchObject({ login: "ghost", isBot: true });
   });
+
+  it("collect excludes the agent's own posted comments (self-echo filter)", async () => {
+    const client = makeClient({ comments: [comment] });
+    const source = new GitHubSource({ repo: "o/r", agentLogin: "agent", client });
+    const from = { positions: { issue: 0, issue_comment: 0, pr: 0, review_comment: 0 } };
+    const { triggers } = await source.collect(from, { exclude: new Set(["github:issue_comment:300"]) });
+    expect(triggers).toHaveLength(0); // own comment dropped, position still advances
+    const all = await source.collect(from);
+    expect(all.triggers).toHaveLength(1);
+  });
 });
 
 describe("gate integration through classify()", () => {

@@ -64,7 +64,7 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | Domain types (Trigger / Policy / AdmissionTable / Decision) | ✅ v0.0.1 |
 | Deterministic gate + off/observe/auto resolution | ✅ v0.0.1 |
 | GitHub Source (poll issues / PR comments / mentions, restart-safe read position) | ✅ v0.1.0 |
-| SQLite single-writer Engine + Ticket lifecycle | 🔸 milestone 2 |
+| SQLite single-writer Engine + Ticket lifecycle (stop/resume/revalidation, outbox replies) | ✅ v0.2.0 |
 | CLI Executor (subprocess + worktree) | 🔸 milestone 3 |
 | Assessment (any OpenAI-compatible endpoint) | 🔸 milestone 3 |
 | Panel ("awaiting human" only) | 🔸 milestone 4 |

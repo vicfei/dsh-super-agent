@@ -10,11 +10,14 @@ Vertical slice first: one Source, one gate, one executor, one reply channel. Eve
 - [x] Delivery: reply posting into the originating thread + 100-word clip discipline (orchestration itself lands with the Engine)
 - [x] Runner: poll → gate → resolution, one line per trigger; live-smoked against this repo's own issues
 
-## Milestone 2 — Engine + Tickets (SQLite)
+## Milestone 2 — Engine + Tickets (done)
 
-- Single-writer Engine: Trigger / Thread / Decision / Ticket / Assignment tables; one transaction per command; durable effects queue (outbox) with same-key coalescing
-- Ticket stages: `working / queued`, person stages (`awaiting answer`, `awaiting review`, `blocked`, `failed`), `idle`, resume-on-owner-message
-- Policy versioning; decisions carry basis + wouldAccept records
+- [x] Single-writer Engine on SQLite (better-sqlite3, WAL): trigger / decision / ticket / effect / kv; **one transaction per command** — ingest writes triggers + decisions + tickets + resume + read positions together (exactly-once)
+- [x] Accept → Ticket + Mandate (policy version, strength, basis) + one confirmation reply effect ("confirms once"); duplicate trigger ids are full no-ops
+- [x] Person's stop ends a Ticket (panel command); the opener's admitted message resumes it after revalidation; failed revalidation revokes the Mandate and the Ticket takes none of its waiting messages
+- [x] Outbox: same kind+key coalesces (payload replaced, order kept), takeDue + exponential backoff (5s→300s cap), terminal on the 5th attempt
+- [x] Self-echo filter: posted comment ids recorded, never re-ingested as triggers (live-verified)
+- [x] CLI: `poll [--post]` persists into the engine and drains reply effects into real comments; `tickets` / `tickets stop <id>`
 
 ## Milestone 3 — Executor + Assessment
 

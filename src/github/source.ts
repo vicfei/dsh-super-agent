@@ -4,7 +4,7 @@
 
 import type { Trigger, Scope } from "../domain.js";
 import { GitHubClient } from "./client.js";
-import type { Feed, StateStore } from "./state.js";
+import type { Feed, SourceState, StateStore } from "./state.js";
 import type { GhIssue, GhIssueComment, GhPull, GhReviewComment } from "./client.js";
 
 const SCOPE_OF_FEED: Record<Feed, Scope> = {
@@ -20,7 +20,8 @@ export interface GitHubSourceOptions {
   /** The agent's own login — addressing is an @mention of it (case-insensitive). */
   agentLogin: string;
   client: GitHubClient;
-  state: StateStore;
+  /** Required only for poll(); collect() is stateless. */
+  state?: StateStore;
 }
 
 /** True for App accounts and `[bot]` logins — bots cap at inferred strength in the gate. */
@@ -36,12 +37,18 @@ function issueNumberFromUrl(url: string): string {
 export class GitHubSource {
   constructor(private readonly opts: GitHubSourceOptions) {}
 
-  /** Newest-first feeds → oldest-first triggers; read positions advance past everything returned. */
-  async poll(): Promise<Trigger[]> {
-    const state = this.opts.state.load();
+  /**
+   * Pure collection: compute triggers newer than `from` and the next state, persisting nothing.
+   * The Engine ingests triggers + positions in one transaction (exactly-once); poll() is the
+   * file-backed convenience wrapper kept for standalone use. `exclude` drops the agent's own
+   * posted comments (docs/001: a Source "filters its own messages").
+   */
+  async collect(from: SourceState, opts: { exclude?: ReadonlySet<string> } = {}): Promise<{ triggers: Trigger[]; next: SourceState }> {
+    const state: SourceState = { positions: { ...from.positions } };
     const out: Trigger[] = [];
+    const wanted = (id: string) => !opts.exclude?.has(id);
 
-    // Each feed compares against its position AT POLL START (frozen) and advances once at the
+    // Each feed compares against its position AT COLLECT START (frozen) and advances once at the
     // end — comparing against a mid-loop maximum would swallow older-but-new items (newest-first).
     const issues = await this.opts.client.listIssues(this.opts.repo);
     let start = state.positions.issue;
@@ -49,7 +56,7 @@ export class GitHubSource {
     for (const it of issues) {
       if (it.id <= start) break;
       if (it.pull_request !== undefined) continue; // pulls feed owns PRs
-      out.push(this.toTrigger("issue", it.id, it.user, it.body, it.created_at,
+      if (wanted(`github:issue:${it.id}`)) out.push(this.toTrigger("issue", it.id, it.user, it.body, it.created_at,
         `github:${this.opts.repo}/issues/${it.number}`, SCOPE_OF_FEED.issue));
       maxSeen = Math.max(maxSeen, it.id);
     }
@@ -61,7 +68,7 @@ export class GitHubSource {
     for (const it of comments) {
       if (it.id <= start) break;
       const n = issueNumberFromUrl(it.issue_url);
-      out.push(this.toTrigger("issue_comment", it.id, it.user, it.body, it.created_at,
+      if (wanted(`github:issue_comment:${it.id}`)) out.push(this.toTrigger("issue_comment", it.id, it.user, it.body, it.created_at,
         `github:${this.opts.repo}/issues/${n}`, SCOPE_OF_FEED.issue_comment));
       maxSeen = Math.max(maxSeen, it.id);
     }
@@ -72,7 +79,7 @@ export class GitHubSource {
     maxSeen = start;
     for (const it of pulls) {
       if (it.id <= start) break;
-      out.push(this.toTrigger("pr", it.id, it.user, it.body, it.created_at,
+      if (wanted(`github:pr:${it.id}`)) out.push(this.toTrigger("pr", it.id, it.user, it.body, it.created_at,
         `github:${this.opts.repo}/pulls/${it.number}`, SCOPE_OF_FEED.pr));
       maxSeen = Math.max(maxSeen, it.id);
     }
@@ -84,14 +91,22 @@ export class GitHubSource {
     for (const it of reviews) {
       if (it.id <= start) break;
       const n = issueNumberFromUrl(it.pull_request_url);
-      out.push(this.toTrigger("review_comment", it.id, it.user, it.body, it.created_at,
+      if (wanted(`github:review_comment:${it.id}`)) out.push(this.toTrigger("review_comment", it.id, it.user, it.body, it.created_at,
         `github:${this.opts.repo}/pulls/${n}`, SCOPE_OF_FEED.review_comment));
       maxSeen = Math.max(maxSeen, it.id);
     }
     state.positions.review_comment = maxSeen;
 
-    this.opts.state.save(state); // persist before handing out — see state.ts note
-    return out;
+    return { triggers: out, next: state };
+  }
+
+  /** File-backed wrapper: collect + persist positions (at-most-once across a crash). */
+  async poll(): Promise<Trigger[]> {
+    if (!this.opts.state) throw new Error("poll() requires a StateStore; use collect() otherwise");
+    const from = this.opts.state.load();
+    const { triggers, next } = await this.collect(from);
+    this.opts.state.save(next); // persist before handing out — see state.ts note
+    return triggers;
   }
 
   private toTrigger(

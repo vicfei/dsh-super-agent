@@ -26,11 +26,12 @@ export class FileSourceState implements StateStore {
   }
 
   load(): SourceState {
+    const zeros: Record<Feed, number> = { issue: 0, issue_comment: 0, pr: 0, review_comment: 0 };
     try {
       const raw = JSON.parse(readFileSync(this.file, "utf8")) as SourceState;
-      return { positions: { issue: 0, issue_comment: 0, pr: 0, review_comment: 0, ...raw.positions } };
+      return { positions: { ...zeros, ...raw.positions } };
     } catch {
-      return { positions: { issue: 0, issue_comment: 0, pr: 0, review_comment: 0 } };
+      return { positions: zeros };
     }
   }
 

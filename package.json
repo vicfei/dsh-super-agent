@@ -1,6 +1,6 @@
 {
   "name": "dsh-super-agent",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Admission control, observe mode & tickets for any CLI coding agent — independent implementation of the DeepSeek Super-agent design",
   "type": "module",
   "private": true,
@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "poll": "tsx src/cli.ts poll",
     "tickets": "tsx src/cli.ts tickets",
-    "work": "tsx src/cli.ts work"
+    "work": "tsx src/cli.ts work",
+    "panel": "tsx src/cli.ts panel"
   },
   "engines": {
     "node": ">=20"

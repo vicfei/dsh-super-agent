@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-super-agent</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: #0d1117; color: #c9d1d9; padding: 24px; }
+  h1 { font-size: 16px; margin: 0 0 4px; color: #e6edf3; }
+  .sub { color: #8b949e; margin-bottom: 20px; }
+  h2 { font-size: 13px; color: #8b949e; text-transform: uppercase; letter-spacing: .08em;
+       margin: 24px 0 8px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px;
+          margin-bottom: 8px; }
+  .quiet { color: #8b949e; }
+  .badge { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 12px; margin-right: 6px; }
+  .b-ignore { background: #da363033; color: #f85149; }
+  .b-shadow { background: #d2992233; color: #e3b341; }
+  .b-accept { background: #23863633; color: #3fb950; }
+  .b-person { background: #a371f733; color: #bc8cff; }
+  .mode button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
+                 padding: 4px 10px; font: inherit; cursor: pointer; margin-right: 4px; }
+  .mode button.on { border-color: #3fb950; color: #3fb950; }
+  button.stop { background: transparent; color: #f85149; border: 1px solid #f8514966;
+                border-radius: 6px; padding: 1px 8px; font: inherit; cursor: pointer; float: right; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { text-align: left; padding: 4px 10px 4px 0; border-bottom: 1px solid #21262d; vertical-align: top; }
+  th { color: #8b949e; font-weight: normal; }
+  .ex { color: #8b949e; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>dsh-super-agent</h1>
+<div class="sub">Messages cannot change permissions — host-enforced admission · policy v<span id=pv></span></div>
+
+<div class="mode">
+  accept mode:
+  <span id="modes">
+    <button data-mode="off">off</button>
+    <button data-mode="observe">observe</button>
+    <button data-mode="auto">auto</button>
+  </span>
+  <span class="quiet" id="modehint"></span>
+</div>
+
+<h2>Awaiting a human</h2>
+<div id="awaiting"></div>
+
+<h2>Observe records — would accept</h2>
+<div id="shadows"></div>
+
+<h2>Recent decisions</h2>
+<table><thead><tr><th>when</th><th>outcome</th><th>strength</th><th>author</th><th>thread</th><th>basis / excerpt</th></tr></thead>
+<tbody id="decisions"></tbody></table>
+
+<footer>healthy state takes no space — empty sections mean nothing needs you</footer>
+
+<script>
+const fmt = t => new Date(t).toISOString().replace('T',' ').slice(5,19);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const threadShort = t => t.replace(/^github:[^\/]+\//, '');
+
+async function api(path, body) {
+  const res = await fetch(path, body ? {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body)} : undefined);
+  return res.json();
+}
+
+async function render() {
+  const s = await api('/api/state');
+  document.getElementById('pv').textContent = s.policy ? s.policy.version : '?';
+  document.querySelectorAll('#modes button').forEach(b => {
+    b.classList.toggle('on', s.policy && b.dataset.mode === s.policy.acceptMode);
+  });
+  document.getElementById('modehint').textContent =
+    s.policy && s.policy.acceptMode === 'auto' ? '' : ' — inferred candidates do not run in this mode';
+
+  const personTickets = s.tickets.filter(t => t.stage === 'needs-person');
+  const revoked = s.tickets.filter(t => t.revokedReason);
+  document.getElementById('awaiting').innerHTML =
+    (personTickets.length === 0 && revoked.length === 0)
+      ? '<div class="quiet">nothing needs you</div>'
+      : personTickets.map(t => `<div class="card"><span class="badge b-person">needs-person</span>
+          ticket #${t.id} ${esc(t.strength)} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)}
+          <button class="stop" onclick="stopTicket(${t.id})">stop</button></div>`).join('')
+        + revoked.map(t => `<div class="card"><span class="badge b-ignore">revoked</span>
+          ticket #${t.id} — ${esc(t.revokedReason)}</div>`).join('');
+
+  const shadows = s.decisions.filter(d => d.wouldAccept);
+  document.getElementById('shadows').innerHTML = shadows.length === 0
+    ? '<div class="quiet">no shadow records</div>'
+    : shadows.map(d => `<div class="card"><span class="badge b-shadow">would accept</span>
+        ${fmt(d.ts)} ${esc(d.author)} → ${esc(threadShort(d.threadId))}
+        <div class="quiet">${esc(d.basis)}</div>
+        <div class="ex">${esc(d.excerpt)}</div></div>`).join('');
+
+  document.getElementById('decisions').innerHTML = s.decisions.map(d => {
+    const cls = d.kind === 'accept' ? 'b-accept' : d.wouldAccept ? 'b-shadow' : 'b-ignore';
+    return `<tr><td class="quiet">${fmt(d.ts)}</td>
+      <td><span class="badge ${cls}">${d.kind}${d.wouldAccept ? ' (would)' : ''}</span></td>
+      <td>${esc(d.strength || '—')}</td><td>${esc(d.author)}${d.isBot ? ' 🤖' : ''}</td>
+      <td class="quiet">${esc(threadShort(d.threadId))}</td>
+      <td>${esc(d.basis)}<div class="ex">${esc(d.excerpt)}</div></td></tr>`;
+  }).join('');
+}
+
+async function setMode(mode) {
+  if (mode === 'auto' && !confirm('auto accepts inferred work after assessment, without further review.\n\nStart in observe and review records first (docs/002). Switch to auto?')) return;
+  if (mode === 'off' && !confirm('off rejects all inferred candidates. Explicit requests still work. Switch?')) return;
+  await api('/api/mode', { mode });
+  render();
+}
+async function stopTicket(id) {
+  if (!confirm('End ticket #' + id + '? (a person\u2019s stop withdraws its mandate)')) return;
+  await api('/api/stop', { id });
+  render();
+}
+document.getElementById('modes').addEventListener('click', e => {
+  if (e.target.dataset.mode) setMode(e.target.dataset.mode);
+});
+render();
+setInterval(render, 3000);
+</script>
+</body>
+</html>

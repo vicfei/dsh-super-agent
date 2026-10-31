@@ -113,6 +113,22 @@ export interface EffectRow {
   attempts: number;
 }
 
+export interface DecisionView {
+  id: number;
+  kind: "accept" | "ignore" | "unavailable";
+  strength?: Strength;
+  basis: string;
+  wouldAccept: boolean;
+  policyVersion: number;
+  ts: string;
+  threadId: string;
+  author: string;
+  isBot: boolean;
+  scope: string;
+  addressing: boolean;
+  excerpt: string;
+}
+
 const MAX_EFFECT_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 5_000;
 const BACKOFF_CAP_MS = 300_000;
@@ -125,6 +141,7 @@ export class Engine {
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
+    this.db.pragma("busy_timeout = 5000"); // panel's quick writes alongside poll
     this.db.exec(SCHEMA);
   }
 
@@ -142,6 +159,16 @@ export class Engine {
       .prepare("INSERT INTO kv (k, v) VALUES ('policy', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v")
       .run(JSON.stringify(policy));
     return true;
+  }
+
+  /** Panel command acting directly: switch acceptMode, versioned. */
+  setAcceptMode(mode: Policy["acceptMode"]): Policy | undefined {
+    const current = this.policy();
+    if (!current) return undefined;
+    if (current.acceptMode === mode) return current;
+    const next: Policy = { ...current, acceptMode: mode, version: current.version + 1 };
+    this.setPolicyIfChanged(next);
+    return next;
   }
 
   policy(): Policy | undefined {
@@ -330,6 +357,31 @@ export class Engine {
   }
 
   // ── views ────────────────────────────────────────────────────────────────
+
+  /** Recent decisions with trigger context — the audit trail (panel + observe records). */
+  decisions(limit = 50): DecisionView[] {
+    const rows = this.db.prepare(`
+      SELECT d.id, d.kind, d.strength, d.basis, d.would_accept, d.policy_version, d.ts,
+             t.thread_id, t.author_login, t.author_is_bot, t.scope, t.addressing,
+             substr(t.body, 1, 160) AS excerpt
+      FROM decision d JOIN trigger t ON t.id = d.trigger_id
+      ORDER BY d.id DESC LIMIT ?`).all(limit) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      kind: String(r.kind) as "accept" | "ignore" | "unavailable",
+      strength: (r.strength as Strength | null) ?? undefined,
+      basis: String(r.basis),
+      wouldAccept: r.would_accept === 1,
+      policyVersion: Number(r.policy_version),
+      ts: String(r.ts),
+      threadId: String(r.thread_id),
+      author: String(r.author_login),
+      isBot: r.author_is_bot === 1,
+      scope: String(r.scope),
+      addressing: r.addressing === 1,
+      excerpt: String(r.excerpt ?? ""),
+    }));
+  }
 
   tickets(): TicketView[] {
     const rows = this.db.prepare("SELECT * FROM ticket ORDER BY id DESC").all() as Record<string, unknown>[];

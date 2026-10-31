@@ -121,8 +121,20 @@ try {
         console.log(`#${t.id} [${t.stage}] ${t.strength} ${t.threadId} opener=${t.opener} ${extra}`.trimEnd());
       }
     }
+  } else if (command === "panel") {
+    const port = Number(positionals[1] ?? process.env.PANEL_PORT ?? 8787);
+    const { startPanel } = await import("./panel.js");
+    const server = await startPanel(engine, port);
+    console.log(`panel: http://127.0.0.1:${port} (db ${args.db}) — Ctrl-C to stop`);
+    const shutdown = () => {
+      server.close(() => process.exit(0));
+      engine.close();
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    await new Promise<never>(() => {}); // serve until signal — the finally-close must not run
   } else {
-    die(`unknown command: ${command} (poll | work | tickets)`);
+    die(`unknown command: ${command} (poll | work | tickets | panel)`);
   }
 } finally {
   engine.close();

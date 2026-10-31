@@ -65,8 +65,8 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | Deterministic gate + off/observe/auto resolution | ✅ v0.0.1 |
 | GitHub Source (poll issues / PR comments / mentions, restart-safe read position) | ✅ v0.1.0 |
 | SQLite single-writer Engine + Ticket lifecycle (stop/resume/revalidation, outbox replies) | ✅ v0.2.0 |
-| CLI Executor (subprocess + worktree) | 🔸 milestone 3 |
-| Assessment (any OpenAI-compatible endpoint) | 🔸 milestone 3 |
+| CLI Executor — any agent in a subprocess + per-ticket git worktree (`work` command) | ✅ v0.3.0 |
+| LLM assessment layer — any OpenAI-compatible endpoint, fail-closed, inferred-only | ✅ v0.3.0 |
 | Panel ("awaiting human" only) | 🔸 milestone 4 |
 | Feishu / Slack sources, auto-merge, speculative execution, Watchdog | roadmap — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
@@ -88,7 +88,15 @@ npm run poll -- --repo you/your-repo --agent-login your-login --config policy.js
 [IGNORE]        NOT-ADMITTED issue_comment github:you/your-repo/issues/7  by stranger
 ```
 
-Executor dispatch lands in milestone 3; see [docs/ROADMAP.md](docs/ROADMAP.md).
+Executor dispatch runs today too — any CLI in a subprocess, one git worktree per ticket:
+
+```bash
+cp examples/executor.json executor.json    # command runs with $DSH_DIR/$DSH_PROMPT_FILE/…
+npm run work -- --repo you/your-repo --executor-config executor.json
+npm run tickets                            # stages: queued / working / needs-person / ended
+```
+
+`claude`, `codex`, `opencode`, `aider` or any shell command works as the worker; 30-minute background cap (timeout kills the whole process group), worker slots, blocked-by-name commands, reports posted back into the thread. Wire a real assessment model with `--assessment llm` (+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`): called only for inferred candidates, explicit never waits, errors fail closed to negative.
 
 ## Comparison
 

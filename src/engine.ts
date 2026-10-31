@@ -62,6 +62,17 @@ CREATE TABLE IF NOT EXISTS effect (
   UNIQUE(kind, key)
 );
 CREATE INDEX IF NOT EXISTS idx_effect_due ON effect(status, next_due_at);
+
+CREATE TABLE IF NOT EXISTS assignment (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id INTEGER NOT NULL REFERENCES ticket(id),
+  state TEXT NOT NULL DEFAULT 'running', -- running | ended
+  worktree TEXT,
+  exit_code INTEGER, timed_out INTEGER NOT NULL DEFAULT 0,
+  output TEXT,
+  started_at TEXT NOT NULL, ended_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_assignment_ticket ON assignment(ticket_id);
 `;
 
 export interface IngestItem {
@@ -86,8 +97,8 @@ export interface TicketView {
   strength: Strength;
   policyVersion: number;
   state: "open" | "ended";
-  /** Display stage per docs/003: no Assignment yet ⇒ queued. */
-  stage: "queued" | "ended";
+  /** queued (no assignment) / working / needs-person (failed assignment) / ended. */
+  stage: "queued" | "working" | "needs-person" | "ended";
   stoppedBy?: string;
   revokedReason?: string;
   resumedCount: number;
@@ -206,13 +217,14 @@ export class Engine {
 
         if (item.resolution.action === "accept") {
           // An admitted message from an opener with an ended ticket on this thread goes to that
-          // ticket (docs/001–002): person-stopped resumes after revalidation; a revoked mandate
-          // takes none of its waiting messages; otherwise this is new work.
+          // ticket (docs/002: "Ended Tickets keep Mandates; a person's message on their own
+          // Threads resumes them"); a revoked mandate takes none of its waiting messages;
+          // otherwise this is new work.
           const ended = t.author.isBot ? undefined : this.db
             .prepare("SELECT * FROM ticket WHERE thread_id = ? AND opener_login = ? AND state = 'ended' ORDER BY id DESC LIMIT 1")
             .get(t.threadId, t.author.login) as Record<string, unknown> | undefined;
 
-          if (ended && ended.stopped_by !== null && ended.revoked_reason === null) {
+          if (ended && ended.revoked_reason === null) {
             const failReason = this.revalidateFailReason(ended, policy, t.author.login);
             if (failReason) {
               this.db.prepare("UPDATE ticket SET revoked_reason = ?, updated_at = ? WHERE id = ?").run(failReason, now, ended.id);
@@ -267,24 +279,89 @@ export class Engine {
     return r.changes > 0;
   }
 
+  // ── assignments (docs/001: the binding of a Ticket to one Executor instance) ──
+
+  /** Open tickets claimable by work: never assigned, or last assignment ended cleanly
+   *  (a resumed ticket is re-claimable; a failed one waits for a person). */
+  claimQueued(limit: number): { id: number; threadId: string; body: string; author: string }[] {
+    const rows = this.db.prepare(`
+      SELECT t.id, t.thread_id, tr.body, tr.author_login
+      FROM ticket t JOIN trigger tr ON tr.id = t.trigger_id
+      LEFT JOIN assignment la ON la.ticket_id = t.id
+        AND la.id = (SELECT MAX(b.id) FROM assignment b WHERE b.ticket_id = t.id)
+      WHERE t.state = 'open' AND (la.id IS NULL OR (la.state = 'ended' AND la.exit_code = 0))
+      ORDER BY t.id LIMIT ?`).all(limit) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: Number(r.id), threadId: String(r.thread_id),
+      body: String(r.body), author: String(r.author_login),
+    }));
+  }
+
+  startAssignment(ticketId: number, worktree: string): number {
+    const r = this.db
+      .prepare("INSERT INTO assignment (ticket_id, worktree, started_at) VALUES (?, ?, ?)")
+      .run(ticketId, worktree, new Date().toISOString());
+    return Number(r.lastInsertRowid);
+  }
+
+  endAssignment(id: number, exitCode: number | null, timedOut: boolean, output: string): void {
+    this.db
+      .prepare("UPDATE assignment SET state = 'ended', exit_code = ?, timed_out = ?, output = ?, ended_at = ? WHERE id = ?")
+      .run(exitCode, timedOut ? 1 : 0, output.slice(0, 65536), new Date().toISOString(), id);
+  }
+
+  /** A ready report ends the Ticket completed (stopped_by stays NULL ⇒ new work opens a new ticket). */
+  completeTicket(id: number): boolean {
+    const r = this.db
+      .prepare("UPDATE ticket SET state = 'ended', updated_at = ? WHERE id = ? AND state = 'open'")
+      .run(new Date().toISOString(), id);
+    return r.changes > 0;
+  }
+
+  /** Public reply enqueue for adapters acting after commit (work reports, notices). */
+  enqueueReply(key: string, threadId: string, body: string): void {
+    const now = new Date().toISOString();
+    const n = threadId.match(/\/(issues|pulls)\/(\d+)$/);
+    this.db.prepare(`INSERT INTO effect (kind, key, payload, status, attempts, next_due_at, created_at, updated_at)
+      VALUES ('reply', ?, ?, 'pending', 0, ?, ?, ?)
+      ON CONFLICT(kind, key) DO UPDATE SET payload = excluded.payload, status = 'pending',
+        attempts = 0, next_due_at = excluded.next_due_at, last_error = NULL, updated_at = excluded.updated_at`)
+      .run(key, JSON.stringify({ threadId, issueNumber: n ? Number(n[2]) : null, body }), now, now, now);
+  }
+
   // ── views ────────────────────────────────────────────────────────────────
 
   tickets(): TicketView[] {
     const rows = this.db.prepare("SELECT * FROM ticket ORDER BY id DESC").all() as Record<string, unknown>[];
-    return rows.map((r) => ({
-      id: Number(r.id),
-      threadId: String(r.thread_id),
-      triggerId: String(r.trigger_id),
-      opener: String(r.opener_login),
-      strength: r.strength as Strength,
-      policyVersion: Number(r.policy_version),
-      state: r.state as "open" | "ended",
-      stage: r.state === "open" ? "queued" : "ended",
-      ...(r.stopped_by !== null ? { stoppedBy: String(r.stopped_by) } : {}),
-      ...(r.revoked_reason !== null ? { revokedReason: String(r.revoked_reason) } : {}),
-      resumedCount: Number(r.resumed_count),
-      createdAt: String(r.created_at),
-    }));
+    const lastAssignment = new Map<number, { state: string; exitCode: number | null }>();
+    for (const a of this.db.prepare("SELECT ticket_id, state, exit_code FROM assignment ORDER BY id").all() as Record<string, unknown>[]) {
+      lastAssignment.set(Number(a.ticket_id), { state: String(a.state), exitCode: a.exit_code === null ? null : Number(a.exit_code) });
+    }
+    return rows.map((r) => {
+      const id = Number(r.id);
+      const state = r.state as "open" | "ended";
+      const a = lastAssignment.get(id);
+      const stage: TicketView["stage"] = state === "ended"
+        ? "ended"
+        : !a ? "queued"
+        : a.state === "running" ? "working"
+        : a.exitCode === 0 ? "queued" // ended cleanly but ticket reopened (resume) — re-claimable
+        : "needs-person"; // failed assignment awaits a person (docs/003 person stage)
+      return {
+        id,
+        threadId: String(r.thread_id),
+        triggerId: String(r.trigger_id),
+        opener: String(r.opener_login),
+        strength: r.strength as Strength,
+        policyVersion: Number(r.policy_version),
+        state,
+        stage,
+        ...(r.stopped_by !== null ? { stoppedBy: String(r.stopped_by) } : {}),
+        ...(r.revoked_reason !== null ? { revokedReason: String(r.revoked_reason) } : {}),
+        resumedCount: Number(r.resumed_count),
+        createdAt: String(r.created_at),
+      };
+    });
   }
 
   // ── effects (outbox) ─────────────────────────────────────────────────────

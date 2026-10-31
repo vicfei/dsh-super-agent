@@ -26,6 +26,10 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 2. **强度二分。** `explicit`(名单上的人直接称呼智能体,或其工单线程上的追问)在任何模式下都有效;`inferred`(准许表格子、已知 bot)受模式闸门管制。bot 最多产生 inferred 候选,永远不能产生 explicit 请求。
 3. **off → observe → auto。** 从 `observe` 起步:正向评估记录为 `would accept`,**什么都不执行**。审阅记录后再切 `auto`。接受 inferred 候选必须经过评估——对非 explicit 触发的直接接受,代码层面拒绝。
 
+![demo:注入式评论被拦截并记录;名单内人员的提及被接受并执行](docs/demo.gif)
+
+*(GIF 里每一行都是本仓库 issue #11 真实运行的输出。)*
+
 ## 工作原理
 
 ```
@@ -67,7 +71,7 @@ GitHub ──► Trigger ──► Gate(快路径,确定性:允许名单 × 准�
 | SQLite 单写者 Engine + Ticket 生命周期(stop/resume/重验,outbox 回帖) | ✅ v0.2.0 |
 | CLI Executor——任意 agent 子进程 + 每工单 git worktree(`work` 命令) | ✅ v0.3.0 |
 | LLM 评估层——任意 OpenAI 兼容端点,失败关闭,仅 inferred 调用 | ✅ v0.3.0 |
-| 面板(只列"等人处理") | 🔸 里程碑 4 |
+| 面板——只列等人事项、观察记录、模式切换 | ✅ v0.4.0 |
 | 飞书 / Slack 源、auto-merge、投机执行、Watchdog | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## 快速开始
@@ -97,6 +101,8 @@ npm run tickets                            # 阶段:queued / working / needs-per
 ```
 
 `claude`、`codex`、`opencode`、`aider` 或任意 shell 命令都可以当 Worker;30 分钟后台上限(超时杀整个进程组)、Worker 槽位、按名封锁的命令、报告回帖到原线程。评估层用 `--assessment llm`(+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`)接真实模型:只对 inferred 候选调用,explicit 永不等待,出错失败关闭判 negative。
+
+面板(`npm run panel`,仅本机)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志,以及接受模式切换(切 `auto` 会要求确认):
 
 ## 对比
 

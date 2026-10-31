@@ -27,11 +27,12 @@ Vertical slice first: one Source, one gate, one executor, one reply channel. Eve
 - [x] Assessment: any OpenAI-compatible endpoint, called only for inferred candidates (explicit never waits); HTTP/parse/network failures fail closed to negative
 - [x] `work` CLI command: claim → prepare → execute → report → drain outbox (live-smoked on this repo, including resume → re-claim → re-run)
 
-## Milestone 4 — Panel + launch
+## Milestone 4 — Panel + launch (done)
 
-- Single web page: only items awaiting a human; observe records with "would accept"; accept-mode switch with confirm
-- Demo GIF: an injection-style comment ("ignore your rules…") is gated out and recorded — nothing executes
-- Launch posts + submit to awesome-agent-orchestrators
+- [x] Zero-dependency HTTP panel (`npm run panel`, localhost): awaiting-human first (needs-person tickets, revoked mandates), observe records with "would accept", full decision log with trigger excerpts, accept-mode switch with confirm, stop command
+- [x] Engine: decisions view (join trigger context), setAcceptMode with version bump, busy_timeout for panel writes alongside poll
+- [x] Demo GIF built from a real run (issue #11): empty allowed list → injection comment gated out and recorded, nothing executed; listing the operator → @mention accepted → worktree work → report posted. Embedded in both READMEs
+- [x] Panel endpoint tests (page, state JSON, mode switch versioning, stop, shadow records)
 
 ## Later (from the article's design, deliberately after the slice)
 

@@ -26,6 +26,10 @@ So this project takes one wedge and does it properly:
 2. **Strength is binary.** `explicit` (a listed person addressing the agent, or a follow-up on their ticket thread) works in every mode. `inferred` (admission-table cells, known bots) is mode-gated. Bots can produce inferred candidates, never explicit requests.
 3. **off → observe → auto.** Start in `observe`: positive assessments are recorded as `would accept` and **nothing executes**. Review the records, then switch to `auto`. Accepting an inferred candidate always requires an assessment — direct accept of a non-explicit trigger is refused, in code.
 
+![demo: an injection comment is gated out and recorded; a listed person's mention is accepted and worked](docs/demo.gif)
+
+*(Every line in this GIF is real output from a live run on this repo — issue #11.)*
+
 ## How it works
 
 ```
@@ -67,7 +71,7 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | SQLite single-writer Engine + Ticket lifecycle (stop/resume/revalidation, outbox replies) | ✅ v0.2.0 |
 | CLI Executor — any agent in a subprocess + per-ticket git worktree (`work` command) | ✅ v0.3.0 |
 | LLM assessment layer — any OpenAI-compatible endpoint, fail-closed, inferred-only | ✅ v0.3.0 |
-| Panel ("awaiting human" only) | 🔸 milestone 4 |
+| Panel — one page of what awaits a human, observe records, mode switch | ✅ v0.4.0 |
 | Feishu / Slack sources, auto-merge, speculative execution, Watchdog | roadmap — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## Quick start
@@ -97,6 +101,8 @@ npm run tickets                            # stages: queued / working / needs-pe
 ```
 
 `claude`, `codex`, `opencode`, `aider` or any shell command works as the worker; 30-minute background cap (timeout kills the whole process group), worker slots, blocked-by-name commands, reports posted back into the thread. Wire a real assessment model with `--assessment llm` (+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`): called only for inferred candidates, explicit never waits, errors fail closed to negative.
+
+And the panel (`npm run panel`, localhost) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, and the accept-mode switch (switching to `auto` asks you to confirm):
 
 ## Comparison
 

@@ -1,0 +1,41 @@
+# Roadmap
+
+Vertical slice first: one Source, one gate, one executor, one reply channel. Everything else waits until the slice is honest.
+
+## Milestone 1 — GitHub Source (in progress)
+
+- Poll GitHub issues / issue comments / PR comments / review comments / mentions via REST (no App required for v0; PAT + `gh` fallback)
+- Trigger dedup (read position persisted; restart never replays)
+- Thread ids (`github:owner/repo/issues/<n>` etc.), author bot detection (`[bot]` logins, App slugs)
+- Delivery: reply into the originating thread
+
+## Milestone 2 — Engine + Tickets (SQLite)
+
+- Single-writer Engine: Trigger / Thread / Decision / Ticket / Assignment tables; one transaction per command; durable effects queue (outbox) with same-key coalescing
+- Ticket stages: `working / queued`, person stages (`awaiting answer`, `awaiting review`, `blocked`, `failed`), `idle`, resume-on-owner-message
+- Policy versioning; decisions carry basis + wouldAccept records
+
+## Milestone 3 — Executor + Assessment
+
+- Config-driven executor: any CLI in a subprocess (`claude`, `codex`, `opencode`, `gemini`, `aider`, custom), per-ticket `git worktree`, background job cap (30 min), slot limit with +1 for a person's message
+- Assessment: any OpenAI-compatible endpoint; positive/negative; refuses direct accept of inferred candidates
+- Environment variables without credentials; blocked commands fail by name
+
+## Milestone 4 — Panel + launch
+
+- Single web page: only items awaiting a human; observe records with "would accept"; accept-mode switch with confirm
+- Demo GIF: an injection-style comment ("ignore your rules…") is gated out and recorded — nothing executes
+- Launch posts + submit to awesome-agent-orchestrators
+
+## Later (from the article's design, deliberately after the slice)
+
+- Subscription bypass for ticket-bearing threads (fan-out without re-eval)
+- Feishu / Slack sources
+- Auto-merge with delivery-requirements prompt (default: own PR, approvals cover head, <200 lines)
+- Batching Router, chain-of-recall context, speculative execution, Watchdog
+
+## Non-goals (v0)
+
+- Multi-instance / distributed operation
+- Cross-source identity mapping
+- Being a DSH plugin

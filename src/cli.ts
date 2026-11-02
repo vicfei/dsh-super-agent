@@ -30,6 +30,8 @@ const { values: args, positionals } = parseArgs({
     assessment: { type: "string", default: "stub-positive" }, // stub-positive | stub-negative | llm
     "assess-base-url": { type: "string" },
     "assess-model": { type: "string" },
+    interval: { type: "string" },
+    "no-panel": { type: "boolean", default: false },
     token: { type: "string" },
     post: { type: "boolean", default: false },
   },
@@ -38,34 +40,39 @@ const { values: args, positionals } = parseArgs({
 const command = positionals[0] ?? "poll";
 const engine = new Engine(args.db);
 
+function loadPolicy(): Policy {
+  if (!args.repo) die("--repo owner/name is required");
+  if (!args["agent-login"]) die("--agent-login <login> is required (mention detection)");
+  try {
+    return JSON.parse(readFileSync(args.config, "utf8")) as Policy;
+  } catch (e) {
+    die(`cannot read policy config ${args.config}: ${e instanceof Error ? e.message : e}`);
+  }
+}
+
+function buildAssessor(): Assessor {
+  if (args.assessment !== "llm") {
+    return stubAssessor(args.assessment === "stub-negative" ? "negative" : "positive");
+  }
+  const baseUrl = args["assess-base-url"] ?? process.env.ASSESS_BASE_URL;
+  if (!baseUrl) die("--assessment llm requires --assess-base-url or ASSESS_BASE_URL");
+  return llmAssessor({
+    baseUrl,
+    model: args["assess-model"] ?? process.env.ASSESS_MODEL ?? "",
+    apiKey: process.env.ASSESS_API_KEY ?? process.env.OPENAI_API_KEY,
+  });
+}
+
 try {
   const token = args.token ?? process.env.GITHUB_TOKEN;
   const client = new GitHubClient({ token: token || undefined });
 
   if (command === "poll") {
-    if (!args.repo) die("--repo owner/name is required");
-    if (!args["agent-login"]) die("--agent-login <login> is required (mention detection)");
-    let policy: Policy;
-    try {
-      policy = JSON.parse(readFileSync(args.config, "utf8")) as Policy;
-    } catch (e) {
-      die(`cannot read policy config ${args.config}: ${e instanceof Error ? e.message : e}`);
-    }
+    const policy = loadPolicy();
     engine.setPolicyIfChanged(policy);
+    const assessor = buildAssessor();
 
-    const assessor: Assessor =
-      args.assessment === "llm"
-        ? llmAssessor({
-            baseUrl: args["assess-base-url"] ?? process.env.ASSESS_BASE_URL ?? "",
-            model: args["assess-model"] ?? process.env.ASSESS_MODEL ?? "",
-            apiKey: process.env.ASSESS_API_KEY ?? process.env.OPENAI_API_KEY,
-          })
-        : stubAssessor(args.assessment === "stub-negative" ? "negative" : "positive");
-    if (args.assessment === "llm" && (!args["assess-base-url"] && !process.env.ASSESS_BASE_URL)) {
-      die("--assess llm requires --assess-base-url or ASSESS_BASE_URL");
-    }
-
-    const source = new GitHubSource({ repo: args.repo, agentLogin: args["agent-login"], client });
+    const source = new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client });
     const { triggers, next } = await source.collect(engine.positions(), { exclude: engine.selfPosted() });
 
     const batch = [];
@@ -89,6 +96,40 @@ try {
       const { drainReplyEffects } = await import("./work.js");
       await drainReplyEffects(engine, client, args.repo!);
     }
+  } else if (command === "watch") {
+    const policy = loadPolicy();
+    engine.setPolicyIfChanged(policy);
+    const assessor = buildAssessor();
+
+    let execCfg: ExecutorConfig;
+    try {
+      execCfg = JSON.parse(readFileSync(args["executor-config"], "utf8")) as ExecutorConfig;
+    } catch (e) {
+      die(`cannot read executor config ${args["executor-config"]}: ${e instanceof Error ? e.message : e}`);
+    }
+
+    if (!args["no-panel"]) {
+      const port = Number(process.env.PANEL_PORT ?? 8787);
+      const { startPanel } = await import("./panel.js");
+      await startPanel(engine, port);
+      console.log(`watch: panel on http://127.0.0.1:${port}`);
+    }
+    console.log(`watch: polling ${args.repo} every ${args.interval ?? 30}s (±20% jitter) — Ctrl-C stops after the current cycle`);
+
+    const { runWatch } = await import("./watch.js");
+    await runWatch({
+      engine,
+      source: new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client }),
+      executor: new Executor(execCfg),
+      client: token ? client : null,
+      repo: args.repo!,
+      policy,
+      assessment: async (t) => {
+        const gate = evaluateGate(policy, t);
+        return gate.strength === "inferred" ? assessor.assess(t) : "positive";
+      },
+      intervalMs: args.interval ? Number(args.interval) * 1000 : undefined,
+    });
   } else if (command === "work") {
     if (!args.repo) die("--repo owner/name is required");
     let execCfg: ExecutorConfig;
@@ -134,7 +175,7 @@ try {
     process.on("SIGTERM", shutdown);
     await new Promise<never>(() => {}); // serve until signal — the finally-close must not run
   } else {
-    die(`unknown command: ${command} (poll | work | tickets | panel)`);
+    die(`unknown command: ${command} (poll | work | watch | tickets | panel)`);
   }
 } finally {
   engine.close();

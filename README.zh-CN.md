@@ -1,5 +1,7 @@
 # dsh-super-agent
 
+[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml)
+
 **给任意 CLI 编码智能体的准入控制、观察模式与工单编排。**
 
 对 [DeepSeek Super-agent](https://github.com/deepseek-ai/dsh-superagent-prototype) 编排设计的独立、执行器无关实现——做所有其他编排器都跳过的那个部分:**谁被允许发起工作,以及你如何逐步信任它。**
@@ -97,6 +99,13 @@ npm run work -- --repo you/your-repo --executor-config executor.json
 npm run tickets                            # 阶段:queued / working / needs-person / ended
 ```
 
+或者一条命令跑完整守护进程——轮询、执行、报告、面板,单进程:
+
+```bash
+npm run watch -- --repo you/your-repo --agent-login your-login --executor-config executor.json
+# 面板 http://127.0.0.1:8787 · Ctrl-C 在当前周期结束后停止 · --interval 秒数 · --no-panel
+```
+
 `claude`、`codex`、`opencode`、`aider` 或任意 shell 命令都可以当 Worker;30 分钟后台上限(超时杀整个进程组)、Worker 槽位、按名封锁的命令、报告回帖到原线程。评估层用 `--assessment llm`(+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`)接真实模型:只对 inferred 候选调用,explicit 永不等待,出错失败关闭判 negative。
 
 面板(`npm run panel`,仅本机)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志,以及接受模式切换(切 `auto` 会要求确认):
@@ -120,3 +129,10 @@ npm run tickets                            # 阶段:queued / working / needs-per
 ## 许可证
 
 [MIT](LICENSE)
+
+这里的区分是层级:DSH 插件生态里已有 25+ 个插件守卫会话内的**单次工具调用**——但没有一个在工单层守卫**谁可以开工**。
+
+## 相关项目
+
+- [dsh-weknora-ops](https://github.com/vicfei/dsh-weknora-ops) —— WeKnora 写入路径,同一哲学:信任是结构性的,不是劝出来的
+- [dsh-plugin-atlas](https://github.com/vicfei/dsh-plugin-atlas) —— 整个 DSH 插件生态的活地图,每日刷新

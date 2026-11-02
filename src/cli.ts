@@ -3,7 +3,8 @@
 // report → drain), tickets (list / stop). Token and API keys come from the environment only.
 
 import { parseArgs } from "node:util";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import type { Policy } from "./domain.js";
 import { Engine } from "./engine.js";
 import { classify, formatOutcome } from "./runner.js";
@@ -14,40 +15,88 @@ import { GitHubClient } from "./github/client.js";
 import { GitHubSource } from "./github/source.js";
 import { Executor, type ExecutorConfig } from "./executor.js";
 import { runWork } from "./work.js";
+import { NO_TOKEN_HINT, scaffoldFromExample, USAGE } from "./usage.js";
 
 function die(msg: string): never {
   console.error(msg);
   process.exit(1);
 }
 
-const { values: args, positionals } = parseArgs({
-  allowPositionals: true,
-  options: {
-    repo: { type: "string" },
-    "agent-login": { type: "string" },
-    config: { type: "string", default: "policy.json" },
-    "executor-config": { type: "string", default: "executor.json" },
-    db: { type: "string", default: ".state/engine.db" },
-    assessment: { type: "string", default: "stub-positive" }, // stub-positive | stub-negative | llm
-    "assess-base-url": { type: "string" },
-    "assess-model": { type: "string" },
-    interval: { type: "string" },
-    "no-panel": { type: "boolean", default: false },
-    token: { type: "string" },
-    post: { type: "boolean", default: false },
-  },
-});
+const WITH_HELP = "\nRun with --help for usage.";
 
+function parseOrDie() {
+  try {
+    return parseArgs({
+      allowPositionals: true,
+      options: {
+        help: { type: "boolean", short: "h", default: false },
+        version: { type: "boolean", default: false },
+        repo: { type: "string" },
+        "agent-login": { type: "string" },
+        config: { type: "string", default: "policy.json" },
+        "executor-config": { type: "string", default: "executor.json" },
+        db: { type: "string", default: ".state/engine.db" },
+        assessment: { type: "string", default: "stub-positive" }, // stub-positive | stub-negative | llm
+        "assess-base-url": { type: "string" },
+        "assess-model": { type: "string" },
+        interval: { type: "string" },
+        "no-panel": { type: "boolean", default: false },
+        token: { type: "string" },
+        post: { type: "boolean", default: false },
+      },
+    });
+  } catch (e) {
+    die(`${e instanceof Error ? e.message : e}${WITH_HELP}`); // unknown option / missing value — no stack trace
+  }
+}
+
+const { values: args, positionals } = parseOrDie();
+
+const { version } = createRequire(import.meta.url)("../package.json");
+if (args.version) {
+  console.log(version);
+  process.exit(0);
+}
+
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "help"] as const;
 const command = positionals[0] ?? "poll";
+if (args.help || command === "help") {
+  console.log(USAGE);
+  process.exit(0);
+}
+if (!(COMMANDS as readonly string[]).includes(command)) {
+  die(`unknown command: ${command}${WITH_HELP}`);
+}
+
 const engine = new Engine(args.db);
 
 function loadPolicy(): Policy {
-  if (!args.repo) die("--repo owner/name is required");
-  if (!args["agent-login"]) die("--agent-login <login> is required (mention detection)");
+  if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
+  if (!args["agent-login"]) die(`--agent-login <login> is required (mention detection)${WITH_HELP}`);
+  if (!existsSync(args.config) && scaffoldFromExample(args.config, "policy.json")) {
+    console.log(`[bootstrap] created ${args.config} from examples/policy.json`);
+    console.log("[bootstrap] put your GitHub login in allowedList, then rerun the same command");
+    engine.close();
+    process.exit(0);
+  }
   try {
     return JSON.parse(readFileSync(args.config, "utf8")) as Policy;
   } catch (e) {
     die(`cannot read policy config ${args.config}: ${e instanceof Error ? e.message : e}`);
+  }
+}
+
+function loadExecutorConfig(): ExecutorConfig {
+  if (!existsSync(args["executor-config"]) && scaffoldFromExample(args["executor-config"], "executor.json")) {
+    console.log(`[bootstrap] created ${args["executor-config"]} from examples/executor.json`);
+    console.log('[bootstrap] point "command" at your agent CLI (claude / codex / aider / …), then rerun');
+    engine.close();
+    process.exit(0);
+  }
+  try {
+    return JSON.parse(readFileSync(args["executor-config"], "utf8")) as ExecutorConfig;
+  } catch (e) {
+    die(`cannot read executor config ${args["executor-config"]}: ${e instanceof Error ? e.message : e}`);
   }
 }
 
@@ -56,7 +105,7 @@ function buildAssessor(): Assessor {
     return stubAssessor(args.assessment === "stub-negative" ? "negative" : "positive");
   }
   const baseUrl = args["assess-base-url"] ?? process.env.ASSESS_BASE_URL;
-  if (!baseUrl) die("--assessment llm requires --assess-base-url or ASSESS_BASE_URL");
+  if (!baseUrl) die(`--assessment llm requires --assess-base-url or ASSESS_BASE_URL${WITH_HELP}`);
   return llmAssessor({
     baseUrl,
     model: args["assess-model"] ?? process.env.ASSESS_MODEL ?? "",
@@ -67,6 +116,7 @@ function buildAssessor(): Assessor {
 try {
   const token = args.token ?? process.env.GITHUB_TOKEN;
   const client = new GitHubClient({ token: token || undefined });
+  if (!token && (command === "poll" || command === "watch" || command === "work")) console.warn(NO_TOKEN_HINT);
 
   if (command === "poll") {
     const policy = loadPolicy();
@@ -102,12 +152,7 @@ try {
     engine.setPolicyIfChanged(policy);
     const assessor = buildAssessor();
 
-    let execCfg: ExecutorConfig;
-    try {
-      execCfg = JSON.parse(readFileSync(args["executor-config"], "utf8")) as ExecutorConfig;
-    } catch (e) {
-      die(`cannot read executor config ${args["executor-config"]}: ${e instanceof Error ? e.message : e}`);
-    }
+    const execCfg = loadExecutorConfig();
 
     if (!args["no-panel"]) {
       const port = Number(process.env.PANEL_PORT ?? 8787);
@@ -132,14 +177,8 @@ try {
       intervalMs: args.interval ? Number(args.interval) * 1000 : undefined,
     });
   } else if (command === "work") {
-    if (!args.repo) die("--repo owner/name is required");
-    let execCfg: ExecutorConfig;
-    try {
-      execCfg = JSON.parse(readFileSync(args["executor-config"], "utf8")) as ExecutorConfig;
-    } catch (e) {
-      die(`cannot read executor config ${args["executor-config"]}: ${e instanceof Error ? e.message : e}`);
-    }
-    if (token === undefined || token === "") console.warn("[work] no GITHUB_TOKEN — reports stay queued in the outbox");
+    if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
+    const execCfg = loadExecutorConfig();
     const executor = new Executor(execCfg);
     const reports = await runWork(engine, executor, args.repo, token ? client : null);
     if (reports.length === 0) console.log("no claimable tickets");
@@ -175,8 +214,6 @@ try {
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
     await new Promise<never>(() => {}); // serve until signal — the finally-close must not run
-  } else {
-    die(`unknown command: ${command} (poll | work | watch | tickets | panel)`);
   }
 } finally {
   engine.close();

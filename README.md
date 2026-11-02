@@ -79,7 +79,7 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 One-liner (no clone needed, once published):
 
 ```bash
-npx @vicfei/dsh-super-agent tickets     # verify it runs; every command has --help-friendly errors
+npx @vicfei/dsh-super-agent --help      # verify it runs; every command has --help-friendly errors
 ```
 
 The poll-and-classify loop runs today — point it at any repo and watch the gate work (observe mode by default: **nothing executes**, inferred candidates are only recorded as `would accept`):
@@ -87,7 +87,7 @@ The poll-and-classify loop runs today — point it at any repo and watch the gat
 ```bash
 git clone https://github.com/vicfei/dsh-super-agent && cd dsh-super-agent
 npm install
-cp examples/policy.json policy.json   # put your login in allowedList
+cp examples/policy.json policy.json   # put your login in allowedList (or skip — first run scaffolds it)
 export GITHUB_TOKEN=ghp_…             # PAT: repo read (comments-write when replies land)
 npm run poll -- --repo you/your-repo --agent-login your-login --config policy.json
 ```
@@ -139,6 +139,10 @@ The distinction is levels: inside the DSH plugin ecosystem, 25+ plugins guard in
 - [*Super-agent: Design Explorations*](https://mp.weixin.qq.com/s/zoS7GlReWPhfCjENGxXCdg) — DeepSeek 产品部 (Yujia Qiao et al.) — the design this project implements.
 - [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype) (MIT) — docs 000–008 are the specification this project follows; the admission-table semantics, observe mode and ticket stages are adapted from docs 002 and 003 with gratitude.
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) — the runtime the official prototype runs on; this project deliberately does not require it.
+
+## Contributing
+
+Issue-first, English, tests green — the full walkthrough is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

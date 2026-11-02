@@ -56,7 +56,16 @@ export class GitHubClient {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`GitHub API ${method} ${path} → ${res.status}: ${text.slice(0, 200)}`);
+      // The three failures a fresh install hits; the raw body alone is cryptic (M5-5).
+      const hint =
+        res.status === 401
+          ? " — GITHUB_TOKEN was rejected: check its value / expiry"
+          : res.status === 403 && /rate limit/i.test(text)
+            ? " — rate limited: set GITHUB_TOKEN to raise the limit"
+            : res.status === 403
+              ? " — forbidden: the token may lack access to this repo"
+              : "";
+      throw new Error(`GitHub API ${method} ${path} → ${res.status}: ${text.slice(0, 200)}${hint}`);
     }
     return (await res.json()) as T;
   }

@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a capability or a new Source / worker kind
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: "The use case matters more than the mechanism — e.g. \"I miss triggers because they arrive in Slack, not GitHub\"."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What should it do?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which layer?
+      options:
+        - Source (new channel: Slack, Feishu, GitHub App, …)
+        - Gate / admission policy
+        - Assessment (LLM layer)
+        - Executor / worktrees
+        - Panel / observability
+        - Delivery (replies, PRs, auto-merge)
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: roadmap-fit
+    attributes:
+      label: Does it fit the roadmap?
+      description: "[docs/ROADMAP.md](https://github.com/vicfei/dsh-super-agent/blob/main/docs/ROADMAP.md) — if your idea is listed there, mention which milestone."

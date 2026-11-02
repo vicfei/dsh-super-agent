@@ -76,6 +76,12 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 
 ## Quick start
 
+One-liner (no clone needed, once published):
+
+```bash
+npx @vicfei/dsh-super-agent tickets     # verify it runs; every command has --help-friendly errors
+```
+
 The poll-and-classify loop runs today — point it at any repo and watch the gate work (observe mode by default: **nothing executes**, inferred candidates are only recorded as `would accept`):
 
 ```bash

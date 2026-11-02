@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // CLI — poll (Source → gate → optional LLM assessment → Engine), work (claim → subprocess →
 // report → drain), tickets (list / stop). Token and API keys come from the environment only.
 

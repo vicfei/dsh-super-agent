@@ -1,17 +1,17 @@
 {
-  "name": "dsh-super-agent",
+  "name": "@vicfei/dsh-super-agent",
   "version": "0.5.0",
   "description": "Admission control, observe mode & tickets for any CLI coding agent — independent implementation of the DeepSeek Super-agent design",
   "type": "module",
-  "private": true,
   "scripts": {
     "test": "vitest run",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp src/panel.html dist/panel.html",
     "poll": "tsx src/cli.ts poll",
     "tickets": "tsx src/cli.ts tickets",
     "work": "tsx src/cli.ts work",
     "panel": "tsx src/cli.ts panel",
-    "watch": "tsx src/cli.ts watch"
+    "watch": "tsx src/cli.ts watch",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=20"
@@ -24,5 +24,18 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1"
-  }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "dsh-super-agent": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "examples",
+    "docs/demo.gif",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ]
 }

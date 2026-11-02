@@ -39,7 +39,7 @@ Vertical slice first: one Source, one gate, one executor, one reply channel. Eve
 - [x] CI: Node 20/22 matrix + badges; lockfile guard against mirror URLs (root-caused Tencent-mirror lockfile contamination breaking hosted runners)
 - [x] `watch` daemon: single-process poll/work/panel, jitter, exponential backoff, graceful stop
 - [x] PR delivery: worker commits → `dsh/ticket-N` branch pushed → pull request opened via API → report links it; delivery failures degrade gracefully
-- [ ] npm publish (`@vicfei/dsh-super-agent`) + npx path
+- [x] npm publish (`@vicfei/dsh-super-agent`) + npx path — packaged (bin `dsh-super-agent`, typed programmatic API), publish workflow on tag/manual dispatch via `NPM_TOKEN` secret
 - [ ] DX polish: friendly errors, issue templates, CONTRIBUTING
 
 ## Later (from the article's design, deliberately after the slice)

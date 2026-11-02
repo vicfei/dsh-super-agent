@@ -77,6 +77,12 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 ## 快速开始
 
+一行试用(发布后无需克隆仓库):
+
+```bash
+npx @vicfei/dsh-super-agent tickets     # 先确认能跑;所有命令带友好报错
+```
+
 轮询+分类回路今天就能跑——指向任意仓库,看门禁工作(默认 observe 模式:**什么都不执行**,inferred 候选只记录为 `would accept`):
 
 ```bash

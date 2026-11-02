@@ -71,6 +71,8 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | CLI Executor——任意 agent 子进程 + 每工单 git worktree(`work` 命令) | ✅ v0.3.0 |
 | LLM 评估层——任意 OpenAI 兼容端点,失败关闭,仅 inferred 调用 | ✅ v0.3.0 |
 | 面板——只列等人事项、观察记录、模式切换 | ✅ v0.4.0 |
+| PR 交付——Worker 的新提交自动变分支+Pull Request,报告带链接 | ✅ v0.5.0 |
+| PR 交付——Worker 的新提交自动变分支+Pull Request,报告带链接 | ✅ v0.5.0 |
 | 飞书 / Slack 源、auto-merge、投机执行、Watchdog | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## 快速开始

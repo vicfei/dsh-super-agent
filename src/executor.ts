@@ -29,6 +29,8 @@ export interface ExecutorResult {
   timedOut: boolean;
   output: string;
   worktree: string;
+  /** Commit the worktree branch was created from — the base for PR delivery diffing. */
+  baseSha: string;
 }
 
 const OUTPUT_CAP = 64 * 1024;
@@ -86,6 +88,8 @@ export class Executor {
     const promptFile = join(dir, "DSH_PROMPT.md");
     writeFileSync(promptFile, renderPrompt(ticket, trigger, repo));
 
+    const baseSha = (await sh(`git -C ${JSON.stringify(dir)} rev-parse HEAD`, { timeoutMs: 10_000 })).output.trim();
+
     const run = await sh(this.cfg.command, {
       cwd: dir,
       timeoutMs: this.cfg.timeoutMs,
@@ -99,7 +103,7 @@ export class Executor {
       },
     });
     const timedOut = run.code === null;
-    return { exitCode: run.code, timedOut, output: run.output, worktree: dir };
+    return { exitCode: run.code, timedOut, output: run.output, worktree: dir, baseSha };
   }
 }
 

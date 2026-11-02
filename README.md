@@ -71,6 +71,7 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | CLI Executor — any agent in a subprocess + per-ticket git worktree (`work` command) | ✅ v0.3.0 |
 | LLM assessment layer — any OpenAI-compatible endpoint, fail-closed, inferred-only | ✅ v0.3.0 |
 | Panel — one page of what awaits a human, observe records, mode switch | ✅ v0.4.0 |
+| PR delivery — worker commits become a branch + pull request, linked in the report | ✅ v0.5.0 |
 | Feishu / Slack sources, auto-merge, speculative execution, Watchdog | roadmap — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## Quick start

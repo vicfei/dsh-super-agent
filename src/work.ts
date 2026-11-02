@@ -6,12 +6,74 @@ import { clipReply } from "./clip.js";
 import type { Engine } from "./engine.js";
 import { Executor, type ExecutorResult } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
+import { spawn } from "node:child_process";
 
 export interface WorkReport {
   ticketId: number;
   assignmentId: number;
   outcome: "done" | "failed" | "refused";
   detail: string;
+}
+
+/** git, quietly — resolves with stdout or throws with stderr context. */
+function git(dir: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", ["-C", dir, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "", err = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("close", (code) => (code === 0 ? resolve(out.trim()) : reject(new Error(`git ${args.join(" ")} → ${code}: ${err.trim().slice(0, 200)}`))));
+  });
+}
+
+export interface DeliveryOutcome {
+  prUrl?: string;
+  error?: string;
+}
+
+/**
+ * PR delivery (docs/003: results return via the Source): if the worker committed anything
+ * beyond its base, push the ticket branch and open a pull request. Delivery failures
+ * degrade gracefully — the work is done; only the packaging failed.
+ */
+export async function deliverPullRequest(
+  client: GitHubClient,
+  repo: string,
+  ticket: { id: number; threadId: string },
+  trigger: { body: string; author: string },
+  result: ExecutorResult,
+): Promise<DeliveryOutcome> {
+  try {
+    const count = Number(await git(result.worktree, ["rev-list", "--count", `${result.baseSha}..HEAD`]));
+    if (count === 0) return {}; // nothing to deliver
+    const branch = `dsh/ticket-${ticket.id}`;
+    await git(result.worktree, ["push", "origin", `HEAD:refs/heads/${branch}`]);
+    const base = await client.getDefaultBranch(repo);
+    const firstLine = trigger.body.trim().split("\n")[0].slice(0, 72) || "ticket work";
+    const pr = await client.createPullRequest(repo, {
+      title: `Ticket #${ticket.id}: ${firstLine}`,
+      head: branch,
+      base,
+      body: [
+        `This is by an automated agent, not a human.`,
+        ``,
+        `Ticket #${ticket.id} — opened by @${trigger.author} in ${ticket.threadId}.`,
+        ``,
+        `**Request**`,
+        ``,
+        trigger.body.trim().slice(0, 500) || "(no body)",
+        ``,
+        `Worker output excerpt:`,
+        ``,
+        "```",
+        result.output.trim().slice(-600),
+        "```",
+      ].join("\n"),
+    });
+    return { prUrl: pr.html_url };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function runWork(
@@ -41,8 +103,12 @@ export async function runWork(
     const ok = !result.timedOut && result.exitCode === 0;
     if (ok) {
       engine.completeTicket(t.id);
-      engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId, reportBody(t.id, result));
-      reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: "exit 0" });
+      const delivery = client ? await deliverPullRequest(client, repo, t, { body: t.body, author: t.author }, result) : {};
+      let body = reportBody(t.id, result);
+      if (delivery.prUrl) body += `\n\nPR: ${delivery.prUrl}`;
+      if (delivery.error) body += `\n\n(delivery failed: ${delivery.error})`;
+      engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId, body);
+      reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: delivery.prUrl ? `exit 0 · PR opened` : "exit 0" });
     } else {
       engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId, reportBody(t.id, result));
       reports.push({

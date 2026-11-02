@@ -10,7 +10,8 @@
     "poll": "tsx src/cli.ts poll",
     "tickets": "tsx src/cli.ts tickets",
     "work": "tsx src/cli.ts work",
-    "panel": "tsx src/cli.ts panel"
+    "panel": "tsx src/cli.ts panel",
+    "watch": "tsx src/cli.ts watch"
   },
   "engines": {
     "node": ">=20"

@@ -1,5 +1,7 @@
 # dsh-super-agent
 
+[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml)
+
 **Admission control, observe mode & tickets for any CLI coding agent.**
 
 An independent, executor-agnostic implementation of the [DeepSeek Super-agent](https://github.com/deepseek-ai/dsh-superagent-prototype) orchestration design — the part every other orchestrator skipped: **who is allowed to start work, and how you learn to trust it.**
@@ -97,6 +99,13 @@ npm run work -- --repo you/your-repo --executor-config executor.json
 npm run tickets                            # stages: queued / working / needs-person / ended
 ```
 
+Or run the whole loop as one daemon — poll, execute, report, and the panel in a single process:
+
+```bash
+npm run watch -- --repo you/your-repo --agent-login your-login --executor-config executor.json
+# panel on http://127.0.0.1:8787 · Ctrl-C stops after the current cycle · --interval seconds · --no-panel
+```
+
 `claude`, `codex`, `opencode`, `aider` or any shell command works as the worker; 30-minute background cap (timeout kills the whole process group), worker slots, blocked-by-name commands, reports posted back into the thread. Wire a real assessment model with `--assessment llm` (+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`): called only for inferred candidates, explicit never waits, errors fail closed to negative.
 
 And the panel (`npm run panel`, localhost) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, and the accept-mode switch (switching to `auto` asks you to confirm):
@@ -110,6 +119,13 @@ And the panel (`npm run panel`, localhost) shows only what needs a person — ne
 | **dsh-super-agent** (this repo) | any CLI | ✅ | ✅ | ✅ | ✅ |
 
 *(Category row per the [Aug 2026 roundup](https://www.augmentcode.com/tools/open-source-agent-orchestrators); individual tools evolve — check their repos.)*
+
+The distinction is levels: inside the DSH plugin ecosystem, 25+ plugins guard individual **tool calls** within a session — none gates **who may start work** at the ticket level.
+
+## Related
+
+- [dsh-weknora-ops](https://github.com/vicfei/dsh-weknora-ops) — the WeKnora write path with the same philosophy: trust is structural, not persuaded
+- [dsh-plugin-atlas](https://github.com/vicfei/dsh-plugin-atlas) — a live, daily-refreshed map of the whole DSH plugin ecosystem
 
 ## Design credits
 

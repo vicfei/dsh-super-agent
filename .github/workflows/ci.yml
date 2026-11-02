@@ -1,0 +1,22 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # lockfile must carry only registry.npmjs.org URLs — generated on a box whose npm
+      # defaults to a Tencent-internal mirror, which hosted runners cannot reach
+      - run: grep -q tencentyun package-lock.json && exit 1 || true
+      - run: npm ci --no-fund --no-audit
+      - run: node_modules/.bin/tsc -p tsconfig.json --noEmit
+      - run: node_modules/.bin/vitest run

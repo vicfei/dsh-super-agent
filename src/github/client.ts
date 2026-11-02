@@ -86,4 +86,19 @@ export class GitHubClient {
   postIssueComment(repo: string, issueNumber: number, body: string): Promise<{ id: number }> {
     return this.request<{ id: number }>("POST", `/repos/${repo}/issues/${issueNumber}/comments`, { body });
   }
+
+  private defaultBranchCache = new Map<string, string>();
+
+  async getDefaultBranch(repo: string): Promise<string> {
+    const cached = this.defaultBranchCache.get(repo);
+    if (cached) return cached;
+    const data = await this.request<{ default_branch: string }>("GET", `/repos/${repo}`);
+    this.defaultBranchCache.set(repo, data.default_branch);
+    return data.default_branch;
+  }
+
+  /** Delivery: turn a pushed ticket branch into a pull request. */
+  createPullRequest(repo: string, pr: { title: string; head: string; base: string; body: string }): Promise<{ number: number; html_url: string }> {
+    return this.request<{ number: number; html_url: string }>("POST", `/repos/${repo}/pulls`, pr);
+  }
 }

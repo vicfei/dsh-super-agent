@@ -14,8 +14,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: npm ci --no-progress --no-fund --no-audit || npm ci --no-progress --no-fund --no-audit
-        # retry once: npm's "Exit handler never called" crash (npm/cli#29023) hits trees with
-        # native deps (better-sqlite3) on hosted runners; the second pass succeeds
+      - name: install deps
+        run: |
+          npm install -g npm@latest
+          npm ci --no-fund --no-audit
+        env:
+          # build better-sqlite3 from source — its prebuilt-binary download hangs npm's
+          # reify on hosted runners ("Exit handler never called"); runners ship build-essential
+          npm_config_build_from_source: "true"
       - run: node_modules/.bin/tsc -p tsconfig.json --noEmit
       - run: node_modules/.bin/vitest run

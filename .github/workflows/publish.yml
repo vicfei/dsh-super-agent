@@ -21,11 +21,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Trusted Publishing needs node >=22.14 AND npm >=11.5.1 (docs.npmjs.com/trusted-publishers).
+          # Node 20 is not enough regardless of npm: the first v0.5.1 attempts (2026-11-02) failed
+          # E404 on the scoped PUT — too-old npm publishes anonymously instead of doing the OIDC exchange.
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      # Trusted Publishing needs npm >= 11.5.1; Node 20 bundles 10.x, which silently
-      # publishes anonymously → E404 on the scoped PUT (first v0.5.1 attempt, 2026-11-02).
-      - run: npm install -g npm@latest && npm --version
+      - run: npm install -g npm@11 && npm --version # guarantee >=11.5.1 even if the distro npm lags
       - run: grep -q tencentyun package-lock.json && exit 1 || true
       - run: npm ci --no-fund --no-audit
       - run: npm publish --access public

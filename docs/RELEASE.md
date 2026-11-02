@@ -13,8 +13,9 @@ human must type a code, the human faces the terminal.
 2. Bind **Trusted Publishing (OIDC)** on npmjs.com: package settings →
    Trusted Publisher → repository `vicfei/dsh-super-agent`, workflow
    `publish.yml`. From then on, tags publish themselves — no tokens anywhere.
-   The runner's npm must be **≥ 11.5.1** (the workflow upgrades it; Node 20's
-   bundled 10.x skips the OIDC exchange and fails with a misleading E404).
+   The runner needs **node ≥ 22.14 and npm ≥ 11.5.1** (the workflow pins
+   node 24 + npm@11): older npm silently publishes anonymously, which fails
+   with a misleading E404 on the scoped PUT.
 3. Keep 2FA at "require for write actions" (neither OIDC nor interactive
    local publish is affected).
 

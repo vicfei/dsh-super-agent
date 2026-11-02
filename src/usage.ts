@@ -1,0 +1,54 @@
+// Usage text and first-run bootstrap helpers — the DX surface of the CLI (M5-5, issue #19).
+// Example configs ship in the npm package (package.json "files"), resolved relative to this
+// module so it works from src/ (tsx), dist/ (installed bin) and any cwd.
+
+import { copyFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export const USAGE = `dsh-super-agent — admission control, observe mode & tickets for any CLI coding agent
+
+Usage: dsh-super-agent <command> [options]
+
+Commands:
+  poll      one pass: poll GitHub → gate → (assessment) → record; --post also drains queued replies
+  work      claim queued tickets → run the executor in a worktree → report
+  watch     poll + work + panel as one daemon (Ctrl-C stops after the current cycle)
+  tickets   list tickets; "tickets stop <id>" ends one
+  panel     serve the awaiting-human panel (http://127.0.0.1:8787)
+  help      show this usage
+
+Common options:
+  --repo owner/name         repository to watch
+  --agent-login <login>     the agent's GitHub login (mention detection)
+  --config <file>           policy config        (default policy.json, auto-scaffolded from examples/)
+  --executor-config <file>  executor config      (default executor.json, auto-scaffolded from examples/)
+  --db <file>               state database       (default .state/engine.db)
+  --token <token>           GitHub token (or env GITHUB_TOKEN)
+  --assessment <mode>       stub-positive | stub-negative | llm
+  --interval <seconds>      watch poll interval (±20% jitter)
+  --no-panel                watch without the panel server
+  --post                    poll also posts queued replies (needs a token)
+
+Environment: GITHUB_TOKEN, ASSESS_BASE_URL, ASSESS_MODEL, ASSESS_API_KEY, PANEL_PORT.
+Docs: https://github.com/vicfei/dsh-super-agent#quick-start`;
+
+const examplesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "examples");
+
+export function examplePath(name: string): string | null {
+  const p = join(examplesDir, name);
+  return existsSync(p) ? p : null;
+}
+
+/** Copy the packaged example to `target` when neither exists yet. True ⇒ caller should tell the user to edit & rerun. */
+export function scaffoldFromExample(target: string, example: string): boolean {
+  const src = examplePath(example);
+  if (!src || existsSync(target)) return false;
+  copyFileSync(src, target);
+  return true;
+}
+
+export const NO_TOKEN_HINT = `[warn] GITHUB_TOKEN is not set — anonymous mode: public repos only, ~60 requests/hour,
+       replies & PRs stay queued in the local outbox until a token appears.
+       start with a read-only token: https://github.com/settings/personal-access-tokens/new
+       then: export GITHUB_TOKEN=github_pat_…`;

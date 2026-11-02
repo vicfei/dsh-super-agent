@@ -80,7 +80,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 一行试用(发布后无需克隆仓库):
 
 ```bash
-npx @vicfei/dsh-super-agent tickets     # 先确认能跑;所有命令带友好报错
+npx @vicfei/dsh-super-agent --help      # 先确认能跑;所有命令带 --help 友好报错
 ```
 
 轮询+分类回路今天就能跑——指向任意仓库,看门禁工作(默认 observe 模式:**什么都不执行**,inferred 候选只记录为 `would accept`):
@@ -88,7 +88,7 @@ npx @vicfei/dsh-super-agent tickets     # 先确认能跑;所有命令带友好�
 ```bash
 git clone https://github.com/vicfei/dsh-super-agent && cd dsh-super-agent
 npm install
-cp examples/policy.json policy.json   # 把你的登录名放进 allowedList
+cp examples/policy.json policy.json   # 把你的登录名放进 allowedList(也可跳过——首跑会自动生成)
 export GITHUB_TOKEN=ghp_…             # PAT:repo 读权限(回复上线后需评论写权限)
 npm run poll -- --repo you/your-repo --agent-login your-login --config policy.json
 ```
@@ -133,6 +133,10 @@ npm run watch -- --repo you/your-repo --agent-login your-login --executor-config
 - [《Super-agent 设计探索:迈向更自主的 Agent 系统》](https://mp.weixin.qq.com/s/zoS7GlReWPhfCjENGxXCdg)——DeepSeek 产品部(Yujia Qiao 等)——本项目实现的设计来源。
 - [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)(MIT)——其 000–008 文档即本项目遵循的规格;准许表语义、观察模式与工单阶段改编自其 docs 002 与 003,致谢。
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)(MIT)——官方原型的运行底座;本项目刻意不依赖它。
+
+## 参与贡献
+
+英文 issue 优先、测试全绿——完整流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可证
 

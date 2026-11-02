@@ -1,0 +1,51 @@
+name: Bug report
+description: Something broke or behaved unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Observe mode is the default — if anything executed work you did not expect, that is a report we want first.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: dsh-super-agent version
+      description: "`dsh-super-agent --version` (or the version in your npx/npm output)"
+    validations:
+      required: true
+  - type: dropdown
+    id: command
+    attributes:
+      label: Which command?
+      options:
+        - poll
+        - work
+        - watch
+        - tickets
+        - panel
+        - other / not sure
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Executor / agent CLI
+      description: "e.g. claude, codex, aider, opencode — or n/a for poll/panel issues"
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: "`node -v`"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Paste the command output / stack trace. No tokens or secrets — credentials never belong in a log.
+      render: shell

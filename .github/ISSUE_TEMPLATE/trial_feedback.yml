@@ -1,0 +1,32 @@
+name: Trial feedback
+description: You ran dsh-super-agent on a real repo — tell us how it went
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful data point for this project is a real repo, real triggers, real agent CLI. Rough edges welcome — that's exactly what we want to hear about.
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: "Repo kind, agent CLI (claude / codex / aider / …), assessment mode (stub / llm), accept mode (observe / auto), how long it ran."
+    validations:
+      required: true
+  - type: textarea
+    id: worked
+    attributes:
+      label: What worked?
+  - type: textarea
+    id: rough
+    attributes:
+      label: What was rough or surprising?
+  - type: dropdown
+    id: keep-running
+    attributes:
+      label: Would you keep it running?
+      options:
+        - "Yes, it's running now"
+        - "Yes, after some fixes"
+        - "Not yet"
+        - "Just experimenting"

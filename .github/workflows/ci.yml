@@ -14,13 +14,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - name: install deps
-        run: |
-          npm install -g npm@latest
-          npm ci --no-fund --no-audit
-        env:
-          # build better-sqlite3 from source — its prebuilt-binary download hangs npm's
-          # reify on hosted runners ("Exit handler never called"); runners ship build-essential
-          npm_config_build_from_source: "true"
+      # lockfile must carry only registry.npmjs.org URLs — generated on a box whose npm
+      # defaults to a Tencent-internal mirror, which hosted runners cannot reach
+      - run: grep -q tencentyun package-lock.json && exit 1 || true
+      - run: npm ci --no-fund --no-audit
       - run: node_modules/.bin/tsc -p tsconfig.json --noEmit
       - run: node_modules/.bin/vitest run

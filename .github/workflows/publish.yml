@@ -1,5 +1,11 @@
 name: publish
 
+# Trusted Publishing (OIDC): no tokens, no OTP, no chat-relayed secrets.
+# Requires a one-time binding on npmjs.com: package settings → Trusted Publisher
+# → repository `vicfei/dsh-super-agent`, workflow `publish.yml`, environment empty.
+# For a package not yet published, do the first publish manually (device auth),
+# then bind — after that, pushing a v* tag publishes.
+
 on:
   push:
     tags: ["v*"]
@@ -10,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # the OIDC token npm exchanges for a publish grant
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,5 +26,3 @@ jobs:
       - run: grep -q tencentyun package-lock.json && exit 1 || true
       - run: npm ci --no-fund --no-audit
       - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

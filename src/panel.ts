@@ -43,6 +43,11 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1"): Pr
       req.on("end", () => {
         try {
           const parsed = JSON.parse(body || "{}") as { mode?: string; id?: number };
+          if (url.pathname === "/api/promote") {
+            const ok = typeof parsed.id === "number" ? engine.promoteTicket(parsed.id, "panel") : false;
+            send(ok ? 200 : 404, "application/json", JSON.stringify({ promoted: ok }));
+            return;
+          }
           if (url.pathname === "/api/mode") {
             if (parsed.mode !== "off" && parsed.mode !== "observe" && parsed.mode !== "auto") {
               send(400, "application/json", JSON.stringify({ error: "mode must be off|observe|auto" }));

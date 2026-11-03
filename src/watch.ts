@@ -12,7 +12,7 @@ import { evaluateGate } from "./gate.js";
 import { runMergeSweep } from "./merge.js";
 import { runWatchdogSweep } from "./watchdog.js";
 import { classify, formatOutcome } from "./runner.js";
-import { runWork } from "./work.js";
+import { runPromoteSweep, runWork } from "./work.js";
 
 export type AssessmentFn = (t: Trigger) => Promise<"positive" | "negative"> | "positive" | "negative";
 
@@ -91,11 +91,14 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
   // Auto-merge sweep (M6-1) — no-op unless policy.merge.enabled; structural brakes inside.
   const merged = client ? await runMergeSweep(engine, client, repo, policy, channels, (l) => log(`[merge] ${l}`)) : [];
 
+  // v1.0 deliver gate: promoted speculative work gets delivered (person-authorized).
+  const promoted = client ? await runPromoteSweep(engine, executor, client, repo, channels, (l) => log(`[promote] ${l}`)) : 0;
+
   // Watchdog sweep (v0.9-1) — no-op unless policy.watchdog.enabled; observes, never admits.
   const watched = await runWatchdogSweep(engine, policy, channels, { log: (l) => log(`[watchdog] ${l}`) });
 
-  if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0 || watched.length > 0) {
-    log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} joined=${report.joined} worked=${reports.length} merged=${merged.length} nudged=${watched.length}`);
+  if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0 || watched.length > 0 || promoted > 0) {
+    log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} joined=${report.joined} spec=${report.speculative} worked=${reports.length} merged=${merged.length} promoted=${promoted} nudged=${watched.length}`);
     return true;
   }
   return false;

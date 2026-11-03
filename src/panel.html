@@ -84,12 +84,17 @@ async function render() {
   document.getElementById('modehint').textContent =
     s.policy && s.policy.acceptMode === 'auto' ? '' : ' — inferred candidates do not run in this mode';
 
+  const spec = s.tickets.filter(t => t.speculative);
+  const specCards = spec.map(t => `<div class="card"><span class="badge b-shadow">speculative</span>
+          ticket #${t.id} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)} — rehearsed silently
+          <button class="stop" style="color:#3fb950;border-color:#3fb95066" onclick="promoteTicket(${t.id})">promote</button></div>`).join('');
   const personTickets = s.tickets.filter(t => t.stage === 'needs-person');
   const revoked = s.tickets.filter(t => t.revokedReason);
   document.getElementById('awaiting').innerHTML =
-    (personTickets.length === 0 && revoked.length === 0)
+    (personTickets.length === 0 && revoked.length === 0 && spec.length === 0)
       ? '<div class="quiet">nothing needs you</div>'
-      : personTickets.map(t => `<div class="card"><span class="badge b-person">needs-person</span>
+      : specCards
+        + personTickets.map(t => `<div class="card"><span class="badge b-person">needs-person</span>
           ticket #${t.id} ${esc(t.strength)} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)}
           <button class="stop" onclick="stopTicket(${t.id})">stop</button></div>`).join('')
         + revoked.map(t => `<div class="card"><span class="badge b-ignore">revoked</span>
@@ -157,6 +162,11 @@ async function setMode(mode) {
   if (mode === 'auto' && !confirm('auto accepts inferred work after assessment, without further review.\n\nStart in observe and review records first (docs/002). Switch to auto?')) return;
   if (mode === 'off' && !confirm('off rejects all inferred candidates. Explicit requests still work. Switch?')) return;
   await api('/api/mode', { mode });
+  render();
+}
+async function promoteTicket(id) {
+  if (!confirm('Promote speculative ticket #' + id + '?\nThe rehearsed work will be pushed and a PR opened — the human deliver gate.')) return;
+  await api('/api/promote', { id });
   render();
 }
 async function stopTicket(id) {

@@ -147,6 +147,8 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 
 **Telegram 通道(v0.8.1)。** 五个通道里最简单的:找 [@BotFather](https://t.me/BotFather) → `/newbot` → 把 token 设进 `TELEGRAM_BOT_TOKEN`——完成,没有建应用流程。bot 自身用户名经 `getMe` 自动发现,群内 @判定精确零配置;私聊天然视为 addressing。同一准许表,同一回路,回复走 `sendMessage`;`getUpdates` 的 offset 持久化在 engine db(重启安全),长轮询自我中止,永不阻塞 watch 周期。
 
+**投机执行 + 交付闸(v1.0)。** 文章 §3.4——"群里报 Bug,先默默修,修好才说话"——而闸门放在它该在的地方:**人手里**。开启 `policy.speculation` 后,observe 模式下的正向 inferred 候选(今天的 would-accept 影子记录)可以额外开出一张**投机工单**:工作在 worktree 里照跑,但**全程沉默**——不推分支、不开 PR、不回帖,修好之前什么都不说。交付闸是人:`tickets promote <id>`(或面板的 promote 按钮)授权交付,watch 守护进程随即推分支、开 PR、汇报。预演有并发上限(`maxSpeculative`),审计保留 would-accept 决策,**没有 promote,投机工作绝不交付**。
+
 **Fast Path / Slow Path(v0.9 命名对齐)。** 文章的两级过滤,用我们的话说:**Fast Path** 是确定性门禁——准许表、名单、宿主强制,回路里没有模型;**Slow Path** 是 LLM 评估,只对 inferred 候选调用(explicit 永不等待),任何出错失败关闭判 negative。同线程的**触发批处理**就是订阅旁路:一个线程上的突发只花一次 Slow Path 调用(按线程计)、开一张工单——后续消息并入上下文,不再重评。
 
 **执行器沙箱(v0.9)。** 默认 worker 子进程以宿主环境权限运行——准入门禁决定*谁可以开工*,不决定开工后的 worker 能碰什么。在 `executor.json` 开 `"sandbox": { "enabled": true }`,worker 即运行于 **bwrap**(Linux)/ **sandbox-exec**(macOS):根目录只读、仅工单 worktree 可写、**默认断网**(除非 `allowNetwork`)、**环境变量白名单**——子进程只见 `PATH/HOME/…` + `DSH_*` + 你配置的 `passEnv`,其余一概不见,`GITHUB_TOKEN` 永远到不了 worker。wrapper 缺失是硬错误——绝不静默降级为未沙箱运行。需要自身认证环境变量的 worker 必须在 `passEnv` 里列名(秘密样命名会被大声拒绝)。

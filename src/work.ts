@@ -138,7 +138,12 @@ export async function runWork(
 
     engine.endAssignment(assignmentId, result.exitCode, result.timedOut, result.output);
     const ok = !result.timedOut && result.exitCode === 0;
-    if (ok) {
+    if (ok && t.speculative) {
+      // v1.0: rehearsal completes in total silence — no push, no PR, no reply. The deliver
+      // gate is a human promote; until then nothing is said and nothing leaves the worktree.
+      engine.completeTicket(t.id);
+      reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: "exit 0 · speculative (silent, awaiting promote)" });
+    } else if (ok) {
       engine.completeTicket(t.id);
       const delivery = client ? await deliverPullRequest(client, repo, t, { body: t.body, author: t.author }, result) : {};
       if (delivery.prNumber !== undefined) {
@@ -187,6 +192,53 @@ function reportBody(ticketId: number, r: ExecutorResult): string {
 }
 
 /** Drain due reply effects, routing each by threadId prefix to its channel (v0.8 multi-source). */
+/**
+ * v1.0 deliver gate, delivery half: promoted tickets whose work ended cleanly get their
+ * branch pushed and PR opened now — the human already authorized it. Idempotent: the
+ * delivery row's presence takes a ticket out of the pending list.
+ */
+export async function runPromoteSweep(
+  engine: Engine,
+  executor: Executor,
+  client: GitHubClient,
+  repo: string,
+  channels: ReplyChannel[] = [],
+  log: (l: string) => void = () => {},
+): Promise<number> {
+  let delivered = 0;
+  for (const t of engine.promotedPendingDelivery()) {
+    try {
+      const worktree = executor.worktreeOf(t.id);
+      const base = await client.getDefaultBranch(repo);
+      await git(worktree, ["fetch", "--quiet", "origin", base]);
+      const baseSha = await git(worktree, ["merge-base", "HEAD", `origin/${base}`]);
+      const count = Number(await git(worktree, ["rev-list", "--count", `${baseSha}..HEAD`]));
+      if (count === 0) {
+        log(`#${t.id} promoted but the worktree has no commits — nothing to deliver`);
+        continue;
+      }
+      const result = { worktree, baseSha, exitCode: 0, timedOut: false, output: "" } as ExecutorResult;
+      const delivery = await deliverPullRequest(client, repo, t, { body: "(promoted speculative work)", author: t.opener }, result);
+      if (delivery.prNumber !== undefined) {
+        engine.recordDelivery({
+          repo, prNumber: delivery.prNumber, ticketId: t.id, threadId: t.threadId,
+          branch: delivery.branch!, headSha: delivery.headSha!,
+        });
+        engine.enqueueReply(`promote-report:${t.id}`, t.threadId,
+          clipReply(`Promoted speculative ticket #${t.id} — the rehearsed work is now up for review: ${delivery.prUrl}. This is by an automated agent, not a human.`, 150));
+        delivered++;
+        log(`#${t.id} delivered after promote → ${delivery.prUrl}`);
+      }
+    } catch (e) {
+      log(`#${t.id} promote delivery failed: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  if (delivered > 0) {
+    await drainReplyEffects(engine, channels.length > 0 ? channels : [new GitHubReplyChannel(client, repo)]);
+  }
+  return delivered;
+}
+
 export async function drainReplyEffects(engine: Engine, channels: ReplyChannel[]): Promise<void> {
   for (const fx of engine.takeDue()) {
     if (fx.kind !== "reply") {

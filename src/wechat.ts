@@ -246,7 +246,8 @@ export function wechatTriggerFromMessage(m: WeixinMessage): Trigger | null {
   const firstText = m.item_list?.find((i) => i.type === 1)?.text_item?.text;
   const anyItem = m.item_list?.[0];
   const body = firstText ?? (anyItem?.type !== undefined && anyItem.type !== 1 ? `[${anyItem.type}]` : "");
-  const isGroup = m.group_id !== undefined;
+  // Verified live: 1:1 chats carry group_id as an EMPTY string — truthiness, not presence.
+  const isGroup = Boolean(m.group_id);
   return {
     id: `wechat:msg/${m.message_id ?? `seq-${m.seq}`}`,
     source: "wechat",

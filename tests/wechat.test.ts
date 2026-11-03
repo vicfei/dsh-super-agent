@@ -54,6 +54,13 @@ describe("wechatTriggerFromMessage", () => {
     expect(g.body).toBe("[2]");
   });
 
+  it("1:1 chats carry group_id as an empty string (verified live) — still im_dm", () => {
+    const t = wechatTriggerFromMessage(msg({ group_id: "" }))!;
+    expect(t.scope).toBe("im_dm");
+    expect(t.threadId).toBe("wechat:peer/wxid_alice");
+    expect(t.addressing).toBe(true);
+  });
+
   it("BOT traffic is never a work request (self-echo at the source); idless → null", () => {
     expect(wechatTriggerFromMessage(msg({ message_type: 2 }))).toBeNull();
     expect(wechatTriggerFromMessage({})).toBeNull();

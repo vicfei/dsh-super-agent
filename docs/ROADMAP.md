@@ -64,6 +64,8 @@ merge conditions are checkable facts, not model judgment.
 - [x] WeChat: iLink Bot Protocol — QR login (`wechat-login`), long-poll with opaque cursor
       (self-aborting, never blocks a cycle), fail-closed group addressing, context_token routing,
       -14 state clearing; text-first (AES media later)
+- [x] Telegram (v0.8.1): official Bot API — @BotFather token, getMe bot-username discovery,
+      getUpdates offset long-poll (self-aborting), sendMessage replies
 
 ## Later (from the article's design, deliberately after the slice)
 

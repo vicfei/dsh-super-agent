@@ -161,6 +161,20 @@ export class GitHubClient {
     return this.request<GhReview[]>("GET", `/repos/${repo}/pulls/${number}/reviews`);
   }
 
+  /** Aggregated Checks-API state for a commit (v0.7-2 merge brake). Neutral/skipped count as pass. */
+  async listCheckRuns(repo: string, sha: string): Promise<{ total: number; failures: number; pending: number }> {
+    const data = await this.request<{ total_count: number; check_runs: { status: string; conclusion: string | null }[] }>(
+      "GET", `/repos/${repo}/commits/${sha}/check-runs`,
+    );
+    return {
+      total: data.total_count,
+      failures: data.check_runs.filter((r) =>
+        ["failure", "timed_out", "cancelled", "action_required", "startup_failure"].includes(r.conclusion ?? ""),
+      ).length,
+      pending: data.check_runs.filter((r) => r.status !== "completed").length,
+    };
+  }
+
   /** SHA-pinned merge: if the head moved since evaluation, GitHub rejects — we never merge unreviewed bytes. */
   mergePullRequest(repo: string, number: number, opts: { sha: string; merge_method: "squash" | "merge" | "rebase" }): Promise<{ merged: boolean; sha?: string }> {
     return this.request<{ merged: boolean; sha?: string }>("PUT", `/repos/${repo}/pulls/${number}/merge`, opts);

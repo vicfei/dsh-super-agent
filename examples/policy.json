@@ -1,21 +1,57 @@
 {
   "version": 1,
-  "allowedList": ["vicfei"],
-  "botList": ["github-actions", "dependabot"],
+  "allowedList": [
+    "vicfei"
+  ],
+  "botList": [
+    "github-actions",
+    "dependabot"
+  ],
   "acceptMode": "observe",
   "merge": {
     "enabled": false,
     "requireApprovalCoveringHead": true,
     "maxChangedLines": 200,
     "method": "squash",
-    "deleteBranch": true
+    "deleteBranch": true,
+    "requireCi": false
   },
   "table": [
-    { "scope": "issue",          "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
-    { "scope": "issue_comment",  "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
-    { "scope": "pr",             "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
-    { "scope": "pr_comment",     "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
-    { "scope": "review_comment", "listedNotAddressing": "inferred", "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" },
-    { "scope": "ci",             "listedNotAddressing": "ignore",   "unlistedAddressing": "ignore", "unlistedNotAddressing": "ignore" }
+    {
+      "scope": "issue",
+      "listedNotAddressing": "inferred",
+      "unlistedAddressing": "ignore",
+      "unlistedNotAddressing": "ignore"
+    },
+    {
+      "scope": "issue_comment",
+      "listedNotAddressing": "inferred",
+      "unlistedAddressing": "ignore",
+      "unlistedNotAddressing": "ignore"
+    },
+    {
+      "scope": "pr",
+      "listedNotAddressing": "inferred",
+      "unlistedAddressing": "ignore",
+      "unlistedNotAddressing": "ignore"
+    },
+    {
+      "scope": "pr_comment",
+      "listedNotAddressing": "inferred",
+      "unlistedAddressing": "ignore",
+      "unlistedNotAddressing": "ignore"
+    },
+    {
+      "scope": "review_comment",
+      "listedNotAddressing": "inferred",
+      "unlistedAddressing": "ignore",
+      "unlistedNotAddressing": "ignore"
+    },
+    {
+      "scope": "ci",
+      "listedNotAddressing": "ignore",
+      "unlistedAddressing": "ignore",
+      "unlistedNotAddressing": "ignore"
+    }
   ]
 }

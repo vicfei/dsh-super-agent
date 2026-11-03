@@ -76,7 +76,8 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | Subscription bypass — an open ticket absorbs the opener's follow-ups as context; resume carries the resuming message to the worker | ✅ v0.7 |
 | GitHub App auth — hourly installation tokens, bot identity; person-stages panel | ✅ v0.6 |
 | Feishu / Slack / WeChat / Telegram channels — same admission table, same loop (`im_dm` / `im_group`) | ✅ v0.8 |
-| Speculative execution, Watchdog, executor sandboxing | v0.9 — see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Watchdog — stuck-work nudge & needs-person reminder, one each, never admits | ✅ v0.9 |
+| Speculative execution, executor sandboxing, batching | v0.9 — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## Quick start
 
@@ -145,6 +146,8 @@ Follow-ups on a live ticket join it as **context** instead of spawning duplicate
 **WeChat channel (v0.8).** Personal WeChat over the **iLink Bot Protocol** — an HTTP, Telegram-bot-shaped API on WeChat's own domain (`ilinkai.weixin.qq.com`); no reverse-engineering, no client hooks. One-time login: `wechat-login` saves a QR image, you scan it with your WeChat app and confirm; credentials, the long-poll cursor, and per-thread reply routes land in the engine db (same `--db` as your watch daemon, which then arms the source automatically). DMs are inherently addressed and become `im_dm` triggers; group messages become `im_group` with fail-closed addressing (the protocol's group text is not reliably @-parseable — allowed-list members still produce inferred). Replies echo the routing `context_token` verbatim — that token is what routes a reply to the right conversation. Session expiry (`-14`) clears state with a re-login hint; the long-poll aborts itself each cycle so a watch is never blocked. Text-first: media bodies arrive as `[type]` placeholders (AES media is a later slice). Protocol reference: [wechatbot.dev/zh/protocol](https://www.wechatbot.dev/zh/protocol).
 
 **Telegram channel (v0.8.1).** The simplest of the five: message [@BotFather](https://t.me/BotFather) → `/newbot` → copy the token into `TELEGRAM_BOT_TOKEN` — done, no app-creation ceremony. The bot's own username is discovered via `getMe`, so group @mention detection is precise with zero config; DMs are inherently addressed. Same admission rows, same loop, replies via `sendMessage`; the `getUpdates` offset persists in the engine db (restart-safe) and the long-poll self-aborts so a watch cycle is never blocked.
+
+**Watchdog (v0.9).** The article's §6 outside control loop, with one hard rule: it **observes and nudges — it never touches admission**; "should this continue" stays with the human approval surface. Opt-in via `policy.watchdog`: an assignment running past `stuckWorkingNudgeMs` (default 30 min) gets exactly one check-in reply in its thread — before nudging, an optional LLM consult (any OpenAI-compatible endpoint, fail-closed to the rule) can skip it when the worker's output tail shows substantive progress; a needs-person ticket waiting past `needsPersonReminderMs` (default 24 h) gets exactly one reminder — never an auto-close. The executor's group-kill timeout remains the hard stop; the Watchdog never kills runs. `health` is its read-only CLI: stage counts, oldest stuck ages, effect backlog.
 
 And the panel (`npm run panel`, localhost) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, and the accept-mode switch (switching to `auto` asks you to confirm):
 

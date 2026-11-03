@@ -72,6 +72,8 @@ export interface Policy {
   table: AdmissionRow[];
   /** Delivery-side brakes for auto-merge (M6). Absent = disabled — nothing merges by default. */
   merge?: Partial<MergePolicy>;
+  /** Watchdog thresholds (v0.9). Absent = disabled — nothing nudges by default. */
+  watchdog?: Partial<WatchdogPolicy>;
 }
 
 /**
@@ -108,6 +110,20 @@ export function defaultMergePolicy(): MergePolicy {
 /** Policy.merge is partial in the config file; fill the rest from defaults. */
 export function mergePolicyOf(policy: Policy): MergePolicy {
   return { ...defaultMergePolicy(), ...(policy.merge ?? {}) };
+}
+
+/**
+ * Watchdog policy (v0.9-1): the outside control loop observes and nudges — it never touches
+ * admission; "should this continue" stays with the human approval surface. Default off.
+ */
+export interface WatchdogPolicy {
+  enabled: boolean;
+  /** An assignment running longer than this gets one nudge. */
+  stuckWorkingNudgeMs: number;
+  /** A needs-person ticket waiting longer than this gets one reminder. */
+  needsPersonReminderMs: number;
+  /** Consult the assessment endpoint before nudging stuck work (fail-closed to the rule). */
+  consultLlm: boolean;
 }
 
 export function defaultRow(scope: Scope): AdmissionRow {

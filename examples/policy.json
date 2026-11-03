@@ -65,5 +65,11 @@
       "unlistedAddressing": "ignore",
       "unlistedNotAddressing": "ignore"
     }
-  ]
+  ],
+  "watchdog": {
+    "enabled": false,
+    "stuckWorkingNudgeMs": 1800000,
+    "needsPersonReminderMs": 86400000,
+    "consultLlm": false
+  }
 }

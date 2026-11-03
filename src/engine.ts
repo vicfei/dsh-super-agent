@@ -469,6 +469,40 @@ export class Engine {
     return rows.map(toDeliveryView);
   }
 
+  // ── watchdog views (v0.9-1) ──────────────────────────────────────────────
+
+  /** Running assignments with enough context for the Watchdog to observe them. */
+  runningAssignments(): { assignmentId: number; ticketId: number; threadId: string; startedAt: string; outputTail: string }[] {
+    const rows = this.db.prepare(`
+      SELECT a.id AS assignment_id, a.ticket_id, a.started_at, t.thread_id,
+             substr(COALESCE(a.output, ''), -500) AS tail
+      FROM assignment a JOIN ticket t ON t.id = a.ticket_id
+      WHERE a.state = 'running' ORDER BY a.id`).all() as Record<string, unknown>[];
+    return rows.map((r) => ({
+      assignmentId: Number(r.assignment_id),
+      ticketId: Number(r.ticket_id),
+      threadId: String(r.thread_id),
+      startedAt: String(r.started_at),
+      outputTail: String(r.tail ?? ""),
+    }));
+  }
+
+  /** Open tickets whose last assignment failed (needs-person) and since when they wait. */
+  needsPersonSince(): { ticketId: number; threadId: string; waitingSince: string }[] {
+    const rows = this.db.prepare(`
+      SELECT t.id AS ticket_id, t.thread_id, la.ended_at
+      FROM ticket t
+      LEFT JOIN assignment la ON la.ticket_id = t.id
+        AND la.id = (SELECT MAX(b.id) FROM assignment b WHERE b.ticket_id = t.id)
+      WHERE t.state = 'open' AND la.state = 'ended' AND la.ended_at IS NOT NULL
+        AND (la.exit_code IS NULL OR la.exit_code != 0)`).all() as Record<string, unknown>[];
+    return rows.map((r) => ({
+      ticketId: Number(r.ticket_id),
+      threadId: String(r.thread_id),
+      waitingSince: String(r.ended_at),
+    }));
+  }
+
   // ── views ────────────────────────────────────────────────────────────────
 
   /** Recent decisions with trigger context — the audit trail (panel + observe records). */

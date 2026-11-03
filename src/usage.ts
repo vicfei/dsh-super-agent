@@ -17,6 +17,7 @@ Commands:
   tickets   list tickets; "tickets stop <id>" ends one
   panel     serve the awaiting-human panel (http://127.0.0.1:8787)
   merge     sweep open ticket PRs — merge those meeting policy.merge requirements (default off)
+  health    read-only体检: stage counts, oldest stuck ages, effect backlog (watchdog's eyes)
   wechat-login  iLink QR login: scan with WeChat, credentials land in the engine db
   help      show this usage
 

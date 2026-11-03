@@ -61,7 +61,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -326,6 +326,14 @@ try {
     });
     store.saveAuth(creds);
     console.log("[wechat] logged in — credentials stored; the watch daemon (same --db) arms the source automatically");
+  } else if (command === "health") {
+    // Watchdog's read-only体检 (v0.9-1): no writes, no replies — safe at any time.
+    const { healthReport } = await import("./watchdog.js");
+    const r = healthReport(engine);
+    const mins = (ms: number | null) => (ms === null ? "—" : `${Math.round(ms / 60000)}min`);
+    console.log(`tickets: queued=${r.tickets.queued} working=${r.tickets.working} needs-person=${r.tickets["needs-person"]} ended=${r.tickets.ended}`);
+    console.log(`oldest working: ${mins(r.oldestWorkingMs)} · oldest needs-person: ${mins(r.oldestNeedsPersonMs)}`);
+    console.log(`effects: pending=${r.pendingEffects} failed=${r.failedEffects}`);
   } else if (command === "merge") {
     // One-shot version of the watch cycle's auto-merge sweep (cron-friendly).
     if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);

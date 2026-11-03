@@ -137,6 +137,8 @@ Follow-ups on a live ticket join it as **context** instead of spawning duplicate
 2. Install it on your repo, then set the environment: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (the PEM, `\n`-escaped — or `GITHUB_APP_PRIVATE_KEY_PATH`), optionally `GITHUB_APP_INSTALLATION_ID` (auto-discovered from `--repo` when omitted)
 3. Run as usual — startup logs `auth: GitHub App …`. Precedence: `--token` flag > App env > `GITHUB_TOKEN`; branch pushes ride the same credential over https (ssh remotes keep using your ssh key)
 
+**Feishu channel (v0.8).** `watch` also listens on Feishu when `FEISHU_APP_ID` + `FEISHU_APP_SECRET` are set. One-time setup: create a self-built app at [open.feishu.cn/app](https://open.feishu.cn/app), enable the **bot** capability, subscribe to `im.message.receive_v1` in **long-connection** mode (no public callback URL), and grant `im:message` permissions. DMs and group @mentions then flow through the same admission table (`im_dm` / `im_group` rows — the table stays data), tickets run the same executor loop, and replies post back into the chat. Set `FEISHU_BOT_OPEN_ID` for precise group @mention detection; without it group messages are never "addressing" (fail-closed — allowed-list members still produce inferred via the `listedNotAddressing` cell).
+
 And the panel (`npm run panel`, localhost) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, and the accept-mode switch (switching to `auto` asks you to confirm):
 
 ## Comparison

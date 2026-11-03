@@ -47,7 +47,7 @@ Vertical slice first: one Source, one gate, one executor, one reply channel. Eve
 The loop currently ends at "PR opened". M6 closes it while keeping every brake structural —
 merge conditions are checkable facts, not model judgment.
 
-- [ ] Auto-merge with delivery requirements: only PRs we opened (`dsh/ticket-N` branch), an
+- [x] Auto-merge with delivery requirements: only PRs we opened (`dsh/ticket-N` branch), an
       allowed-list (non-bot) approval **covering the head commit**, a changed-lines cap
       (default ±200), and any allowed-list CHANGES_REQUESTED is a veto until re-reviewed;
       default **off**, opt-in via `policy.merge`; idempotent sweep each watch cycle

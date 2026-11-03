@@ -2,8 +2,10 @@
 // record the assignment, report into the thread (docs/003: reports; docs/004: report style).
 // Runs after commit: the Engine state transitions first, the subprocess and posting after.
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { clipReply } from "./clip.js";
-import type { Engine } from "./engine.js";
+import type { Engine, SpillFile } from "./engine.js";
 import { Executor, type ExecutorResult } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
 import type { ReplyChannel } from "./source.js";
@@ -121,6 +123,7 @@ export async function runWork(
 
   for (const t of queued) {
     const assignmentId = engine.startAssignment(t.id, ""); // running — worktree filled on success
+    if (t.spills.length > 0) writeSpills(executor.worktreeOf(t.id), t.spills); // before the run: recall must be readable
     let result: ExecutorResult | undefined;
     try {
       result = await executor.run({ id: t.id, threadId: t.threadId }, { body: t.body, author: t.author }, repo);
@@ -161,6 +164,15 @@ export async function runWork(
   const deliver = channels.length > 0 ? channels : client ? [new GitHubReplyChannel(client, repo)] : [];
   if (deliver.length > 0) await drainReplyEffects(engine, deliver);
   return reports;
+}
+
+/** Materialize spilled context inside the worktree — the worker's chain of recall (v0.9.x). */
+function writeSpills(worktree: string, spills: SpillFile[]): void {
+  for (const sp of spills) {
+    const p = join(worktree, sp.file);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, sp.content, "utf8");
+  }
 }
 
 function reportBody(ticketId: number, r: ExecutorResult): string {

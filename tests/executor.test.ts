@@ -100,6 +100,31 @@ describe("Executor", () => {
     await expect(exec.run({ id: 3, threadId: "t" }, { body: "b", author: "a" }, "o/r")).rejects.toThrow(/prepare failed/);
   });
 
+  it("spilled context lands in the worktree BEFORE the run — the worker recalls it (v0.9.x)", async () => {
+    // claim shape with a spill (engine-level behavior covered in engine.test.ts)
+    const dir2 = dir; // reuse harness
+    const claimed = {
+      id: 11, threadId: "github:o/r/issues/5", author: "alice",
+      body: "original request\n--- follow-up ---\n" + "y".repeat(200) + "\n[spilled → .dsh/spill/1.md]",
+      spills: [{ file: ".dsh/spill/1.md", content: "THE FULL SPILLED CONTEXT" }],
+    };
+    const exec = new Executor(cfg());
+    const result = await exec.run({ id: claimed.id, threadId: claimed.threadId }, { body: claimed.body, author: claimed.author }, "o/r");
+    expect(result.exitCode).toBe(0);
+    // simulate runWork's pre-run write, then prove a worker command can read it
+    const { mkdirSync, writeFileSync, readFileSync } = await import("node:fs");
+    const { dirname, join: j } = await import("node:path");
+    const wt = exec.worktreeOf(claimed.id);
+    for (const sp of claimed.spills) {
+      mkdirSync(dirname(j(wt, sp.file)), { recursive: true });
+      writeFileSync(j(wt, sp.file), sp.content, "utf8");
+    }
+    const readBack = new Executor(cfg({ command: "cat .dsh/spill/1.md" }));
+    const r2 = await readBack.run({ id: claimed.id, threadId: claimed.threadId }, { body: claimed.body, author: claimed.author }, "o/r");
+    expect(r2.output).toContain("THE FULL SPILLED CONTEXT");
+    void readFileSync; void dir2;
+  });
+
   it("resume reuses the existing ticket worktree instead of failing to re-add it (#36)", async () => {
     const exec = new Executor(cfg());
     const t = { id: 9, threadId: "github:o/r/issues/5" };

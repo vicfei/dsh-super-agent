@@ -3,8 +3,9 @@
 // PRs leak into the issues listing (same id space) and are skipped there — the pulls feed owns them.
 
 import type { Trigger, Scope } from "../domain.js";
+import type { Source, SourceState } from "../source.js";
 import { GitHubClient } from "./client.js";
-import type { Feed, SourceState, StateStore } from "./state.js";
+import type { Feed, StateStore } from "./state.js";
 import type { GhIssue, GhIssueComment, GhPull, GhReviewComment } from "./client.js";
 
 const SCOPE_OF_FEED: Record<Feed, Scope> = {
@@ -34,7 +35,9 @@ function issueNumberFromUrl(url: string): string {
   return m ? m[1] : "unknown";
 }
 
-export class GitHubSource {
+export class GitHubSource implements Source {
+  readonly kind = "github" as const;
+
   constructor(private readonly opts: GitHubSourceOptions) {}
 
   /**

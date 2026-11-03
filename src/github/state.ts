@@ -5,13 +5,11 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { SourceState } from "../source.js";
 
 export type Feed = "issue" | "issue_comment" | "pr" | "review_comment";
 
-export interface SourceState {
-  /** Max item id already taken per feed; 0 = never polled. Item ids are increasing ints. */
-  positions: Record<Feed, number>;
-}
+export type { SourceState } from "../source.js";
 
 export interface StateStore {
   load(): SourceState;
@@ -26,7 +24,7 @@ export class FileSourceState implements StateStore {
   }
 
   load(): SourceState {
-    const zeros: Record<Feed, number> = { issue: 0, issue_comment: 0, pr: 0, review_comment: 0 };
+    const zeros: Record<string, number> = { issue: 0, issue_comment: 0, pr: 0, review_comment: 0 };
     try {
       const raw = JSON.parse(readFileSync(this.file, "utf8")) as SourceState;
       return { positions: { ...zeros, ...raw.positions } };

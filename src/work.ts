@@ -6,7 +6,24 @@ import { clipReply } from "./clip.js";
 import type { Engine } from "./engine.js";
 import { Executor, type ExecutorResult } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
+import type { ReplyChannel } from "./source.js";
 import { spawn } from "node:child_process";
+
+/** GitHub's ReplyChannel: threads are `github:owner/repo/(issues|pulls)/N`, delivery is a comment. */
+export class GitHubReplyChannel implements ReplyChannel {
+  constructor(private readonly client: GitHubClient, private readonly repo: string) {}
+
+  matches(threadId: string): boolean {
+    return threadId.startsWith("github:");
+  }
+
+  async deliver(threadId: string, body: string): Promise<{ externalId: string }> {
+    const n = threadId.match(/\/(issues|pulls)\/(\d+)$/);
+    if (!n) throw new Error("cannot resolve issue number from thread");
+    const { id } = await this.client.postIssueComment(this.repo, Number(n[2]), body);
+    return { externalId: `issue_comment:${id}` };
+  }
+}
 
 export interface WorkReport {
   ticketId: number;
@@ -97,6 +114,7 @@ export async function runWork(
   executor: Executor,
   repo: string,
   client: GitHubClient | null,
+  channels: ReplyChannel[] = [],
 ): Promise<WorkReport[]> {
   const queued = engine.claimQueued(executor.cfg.maxWorkers); // slots
   const reports: WorkReport[] = [];
@@ -140,7 +158,8 @@ export async function runWork(
     }
   }
 
-  if (client) await drainReplyEffects(engine, client, repo);
+  const deliver = channels.length > 0 ? channels : client ? [new GitHubReplyChannel(client, repo)] : [];
+  if (deliver.length > 0) await drainReplyEffects(engine, deliver);
   return reports;
 }
 
@@ -155,22 +174,24 @@ function reportBody(ticketId: number, r: ExecutorResult): string {
   );
 }
 
-export async function drainReplyEffects(engine: Engine, client: GitHubClient, repo: string): Promise<void> {
+/** Drain due reply effects, routing each by threadId prefix to its channel (v0.8 multi-source). */
+export async function drainReplyEffects(engine: Engine, channels: ReplyChannel[]): Promise<void> {
   for (const fx of engine.takeDue()) {
     if (fx.kind !== "reply") {
       engine.completeEffect(fx.id);
       continue;
     }
-    const p = fx.payload as { issueNumber: number | null; body: string };
-    if (p.issueNumber === null) {
-      engine.failEffect(fx.id, "cannot resolve issue number from thread", false);
+    const p = fx.payload as { threadId: string; body: string };
+    const channel = channels.find((c) => c.matches(p.threadId));
+    if (!channel) {
+      engine.failEffect(fx.id, `no reply channel for thread ${p.threadId}`, false);
       continue;
     }
     try {
-      const { id } = await client.postIssueComment(repo, p.issueNumber, p.body);
+      const { externalId } = await channel.deliver(p.threadId, p.body);
       engine.completeEffect(fx.id);
-      engine.markSelfPosted(id); // never re-ingest our own comment
-      console.log(`[POSTED] ${fx.key} → ${repo}#${p.issueNumber}`);
+      engine.markSelfPosted(`${p.threadId.split(":")[0]}:${externalId}`); // never re-ingest our own
+      console.log(`[POSTED] ${fx.key} → ${p.threadId}`);
     } catch (e) {
       engine.failEffect(fx.id, e instanceof Error ? e.message : String(e));
       console.error(`[POST-FAILED] ${fx.key}: ${e instanceof Error ? e.message : e} (will back off)`);

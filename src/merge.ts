@@ -8,7 +8,8 @@ import { mergePolicyOf } from "./domain.js";
 import type { MergePolicy, Policy } from "./domain.js";
 import type { Engine } from "./engine.js";
 import type { GitHubClient, GhPullDetail, GhReview } from "./github/client.js";
-import { drainReplyEffects } from "./work.js";
+import type { ReplyChannel } from "./source.js";
+import { GitHubReplyChannel, drainReplyEffects } from "./work.js";
 
 export interface MergeCheck {
   ok: boolean;
@@ -110,6 +111,7 @@ export async function runMergeSweep(
   client: GitHubClient,
   repo: string,
   policy: Policy,
+  channels: ReplyChannel[] = [],
   log: (l: string) => void = () => {},
 ): Promise<MergeSweepLine[]> {
   const merge = mergePolicyOf(policy);
@@ -171,6 +173,9 @@ export async function runMergeSweep(
     }
   }
 
-  if (out.length > 0) await drainReplyEffects(engine, client, repo);
+  if (out.length > 0) {
+    // Merge receipts go to the ticket's thread — which may be an IM thread (v0.8 routing).
+    await drainReplyEffects(engine, channels.length > 0 ? channels : [new GitHubReplyChannel(client, repo)]);
+  }
   return out;
 }

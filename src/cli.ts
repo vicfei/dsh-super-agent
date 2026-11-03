@@ -15,7 +15,7 @@ import { GitHubClient } from "./github/client.js";
 import { AppTokenProvider, appAuthFromEnv } from "./github/app-auth.js";
 import { GitHubSource } from "./github/source.js";
 import { Executor, type ExecutorConfig } from "./executor.js";
-import { runWork } from "./work.js";
+import { GitHubReplyChannel, runWork } from "./work.js";
 import { mergePolicyOf } from "./domain.js";
 import { NO_TOKEN_HINT, scaffoldFromExample, USAGE } from "./usage.js";
 
@@ -156,7 +156,7 @@ try {
     const assessor = buildAssessor();
 
     const source = new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client });
-    const { triggers, next } = await source.collect(engine.positions(), { exclude: engine.selfPosted() });
+    const { triggers, next } = await source.collect(engine.sourceState("github"), { exclude: engine.selfPosted() });
 
     const batch = [];
     for (const t of triggers) {
@@ -168,7 +168,7 @@ try {
     }
     for (const o of batch) console.log(formatOutcome(o));
 
-    const report = engine.ingest(batch, next);
+    const report = engine.ingest(batch, { github: next });
     if (batch.length === 0) console.log("no new triggers");
     for (const r of report.refusals) console.log(`[REFUSED] ${r}`);
     console.log(
@@ -177,7 +177,7 @@ try {
 
     if (args.post) {
       const { drainReplyEffects } = await import("./work.js");
-      await drainReplyEffects(engine, client, args.repo!);
+      await drainReplyEffects(engine, [new GitHubReplyChannel(client, args.repo!)]);
     }
   } else if (command === "watch") {
     const policy = loadPolicy();
@@ -197,7 +197,8 @@ try {
     const { runWatch } = await import("./watch.js");
     await runWatch({
       engine,
-      source: new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client }),
+      sources: [new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client })],
+      channels: authenticated ? [new GitHubReplyChannel(client, args.repo!)] : [],
       executor: new Executor(execCfg),
       client: authenticated ? client : null,
       repo: args.repo!,

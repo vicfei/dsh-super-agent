@@ -5,7 +5,7 @@
 
 import type { Policy, Trigger } from "./domain.js";
 import type { Engine } from "./engine.js";
-import type { GitHubSource } from "./github/source.js";
+import type { ReplyChannel, Source, SourceState } from "./source.js";
 import type { Executor } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
 import { runMergeSweep } from "./merge.js";
@@ -16,9 +16,12 @@ export type AssessmentFn = (t: Trigger) => Promise<"positive" | "negative"> | "p
 
 export interface WatchOptions {
   engine: Engine;
-  source: GitHubSource;
+  /** All sources, polled each cycle (v0.8); each keeps its own read state in the engine. */
+  sources: Source[];
   executor: Executor;
   client: GitHubClient | null;
+  /** Reply routes by threadId prefix (v0.8). */
+  channels: ReplyChannel[];
   repo: string;
   policy: Policy;
   assessment: AssessmentFn;
@@ -54,20 +57,24 @@ export async function runWatch(opts: WatchOptions): Promise<void> {
 }
 
 async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<boolean> {
-  const { engine, source, executor, client, repo, policy } = opts;
-  const { triggers, next } = await source.collect(engine.positions(), { exclude: engine.selfPosted() });
+  const { engine, executor, client, channels, repo, policy } = opts;
 
   const batch = [];
-  for (const t of triggers) batch.push(classify(t, policy, await opts.assessment(t)));
+  const nextBySource: Record<string, SourceState> = {};
+  for (const source of opts.sources) {
+    const { triggers, next } = await source.collect(engine.sourceState(source.kind), { exclude: engine.selfPosted() });
+    nextBySource[source.kind] = next;
+    for (const t of triggers) batch.push(classify(t, policy, await opts.assessment(t)));
+  }
   for (const outcome of batch) log(formatOutcome(outcome));
-  const report = engine.ingest(batch, next);
+  const report = engine.ingest(batch, nextBySource);
   for (const refusal of report.refusals) log(`[REFUSED] ${refusal}`);
 
-  const reports = await runWork(engine, executor, repo, client);
+  const reports = await runWork(engine, executor, repo, client, channels);
   for (const r of reports) log(`#${r.ticketId} [${r.outcome}] ${r.detail}`);
 
   // Auto-merge sweep (M6-1) — no-op unless policy.merge.enabled; structural brakes inside.
-  const merged = client ? await runMergeSweep(engine, client, repo, policy, (l) => log(`[merge] ${l}`)) : [];
+  const merged = client ? await runMergeSweep(engine, client, repo, policy, channels, (l) => log(`[merge] ${l}`)) : [];
 
   if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0) {
     log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} joined=${report.joined} worked=${reports.length} merged=${merged.length}`);

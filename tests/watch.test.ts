@@ -10,6 +10,7 @@ import type { GitHubSource } from "../src/github/source.js";
 import type { SourceState } from "../src/github/state.js";
 import { Executor, type ExecutorConfig } from "../src/executor.js";
 import { GitHubClient } from "../src/github/client.js";
+import { GitHubReplyChannel } from "../src/work.js";
 import { runWatch } from "../src/watch.js";
 
 let dir: string;
@@ -73,8 +74,8 @@ describe("runWatch", () => {
   it("one busy cycle: trigger → ticket → executed → reported; later cycles quiet", async () => {
     const logs: string[] = [];
     await runWatch({
-      engine, source: fakeSource(["hello", "empty", "empty"]), executor: echoExecutor(),
-      client: null, repo: "o/r", policy, assessment: () => "positive",
+      engine, sources: [fakeSource(["hello", "empty", "empty"])], executor: echoExecutor(),
+      client: null, channels: [], repo: "o/r", policy, assessment: () => "positive",
       intervalMs: 5, cycles: 3, log: (l) => logs.push(l),
     });
 
@@ -89,8 +90,8 @@ describe("runWatch", () => {
   it("a failing cycle backs off and the next one recovers", async () => {
     const logs: string[] = [];
     await runWatch({
-      engine, source: fakeSource(["fail", "empty"]), executor: echoExecutor(),
-      client: null, repo: "o/r", policy, assessment: () => "positive",
+      engine, sources: [fakeSource(["fail", "empty"])], executor: echoExecutor(),
+      client: null, channels: [], repo: "o/r", policy, assessment: () => "positive",
       intervalMs: 5, cycles: 2, log: (l) => logs.push(l),
     });
     expect(logs.some((l) => l.includes("backing off"))).toBe(true);
@@ -99,8 +100,8 @@ describe("runWatch", () => {
 
   it("does not re-execute across cycles (engine idempotence + read positions)", async () => {
     await runWatch({
-      engine, source: fakeSource(["hello", "empty"]), executor: echoExecutor(),
-      client: null, repo: "o/r", policy, assessment: () => "positive",
+      engine, sources: [fakeSource(["hello", "empty"])], executor: echoExecutor(),
+      client: null, channels: [], repo: "o/r", policy, assessment: () => "positive",
       intervalMs: 5, cycles: 2, log: () => {},
     });
     expect(engine.tickets()).toHaveLength(1);
@@ -131,10 +132,11 @@ describe("runWatch", () => {
       throw new Error(`unexpected fetch ${method} ${u}`);
     }) as unknown as typeof fetch;
     const client = new GitHubClient({ token: "t0", fetchImpl });
+    const channels = [new GitHubReplyChannel(client, "o/r")];
 
     const logs: string[] = [];
     await runWatch({
-      engine, source: fakeSource(["empty"]), executor: echoExecutor(), client, repo: "o/r",
+      engine, sources: [fakeSource(["empty"])], executor: echoExecutor(), client, channels, repo: "o/r",
       policy: { ...policy, merge: { enabled: true } }, assessment: () => "positive",
       intervalMs: 5, cycles: 1, log: (l) => logs.push(l),
     });
@@ -149,8 +151,8 @@ describe("runWatch", () => {
     engine.recordDelivery({ repo: "o/r", prNumber: 42, ticketId: 1, threadId: "github:o/r/issues/5", branch: "dsh/ticket-1", headSha: "a" });
     const fetchImpl = vi.fn(async () => { throw new Error("no API traffic expected"); }) as unknown as typeof fetch;
     await runWatch({
-      engine, source: fakeSource(["empty"]), executor: echoExecutor(),
-      client: new GitHubClient({ token: "t0", fetchImpl }), repo: "o/r", policy,
+      engine, sources: [fakeSource(["empty"])], executor: echoExecutor(),
+      client: new GitHubClient({ token: "t0", fetchImpl }), channels: [], repo: "o/r", policy,
       assessment: () => "positive", intervalMs: 5, cycles: 1, log: () => {},
     });
     expect(fetchImpl).not.toHaveBeenCalled();

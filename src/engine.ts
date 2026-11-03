@@ -12,7 +12,7 @@ import { dirname } from "node:path";
 import { clipReply } from "./clip.js";
 import type { Policy, Strength, Trigger } from "./domain.js";
 import type { GateResult, Resolution } from "./gate.js";
-import type { Feed, SourceState } from "./github/state.js";
+import type { SourceState } from "./source.js";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
@@ -214,21 +214,25 @@ export class Engine {
     return row ? (JSON.parse(row.v) as Policy) : undefined;
   }
 
-  positions(): SourceState {
-    const row = this.db.prepare("SELECT v FROM kv WHERE k = 'positions'").get() as { v: string } | undefined;
-    const zeros: Record<Feed, number> = { issue: 0, issue_comment: 0, pr: 0, review_comment: 0 };
-    return { positions: row ? { ...zeros, ...(JSON.parse(row.v) as Record<Feed, number>) } : zeros };
+  /** Per-source read state (v0.8): each Source's positions live under `positions:<kind>`;
+   * v0.7 databases kept one unnamed blob — that was GitHub's, so it migrates on first read. */
+  sourceState(source: string): SourceState {
+    let row = this.db.prepare("SELECT v FROM kv WHERE k = ?").get(`positions:${source}`) as { v: string } | undefined;
+    if (!row && source === "github") {
+      row = this.db.prepare("SELECT v FROM kv WHERE k = 'positions'").get() as { v: string } | undefined;
+    }
+    return { positions: row ? (JSON.parse(row.v) as Record<string, number>) : {} };
   }
 
-  /** Comment ids the agent itself posted — the Source must never re-ingest them (self-echo). */
+  /** Message keys the agent itself posted ("<source>:<externalId>") — never re-ingested (self-echo). */
   selfPosted(): Set<string> {
     const row = this.db.prepare("SELECT v FROM kv WHERE k = 'self_posted'").get() as { v: string } | undefined;
-    return new Set<string>(row ? (JSON.parse(row.v) as string[]) : []);
+    return new Set(row ? (JSON.parse(row.v) as string[]) : []);
   }
 
-  markSelfPosted(commentId: number): void {
+  markSelfPosted(key: string): void {
     const all = this.selfPosted();
-    all.add(`github:issue_comment:${commentId}`);
+    all.add(key);
     this.db
       .prepare("INSERT INTO kv (k, v) VALUES ('self_posted', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v")
       .run(JSON.stringify([...all]));
@@ -236,7 +240,7 @@ export class Engine {
 
   // ── ingest (one transaction: triggers + decisions + tickets + resume + positions) ──
 
-  ingest(batch: IngestItem[], nextPositions?: SourceState): IngestReport {
+  ingest(batch: IngestItem[], nextBySource?: Record<string, SourceState>): IngestReport {
     const now = new Date().toISOString();
     const report: IngestReport = { fresh: 0, duplicates: 0, ticketsOpened: 0, resumed: 0, joined: 0, refusals: [] };
     const policy = this.policy();
@@ -256,7 +260,7 @@ export class Engine {
       ON CONFLICT(kind, key) DO UPDATE SET payload = excluded.payload, status = 'pending',
         attempts = 0, next_due_at = excluded.next_due_at, last_error = NULL, updated_at = excluded.updated_at`);
     const savePositions = this.db.prepare(
-      "INSERT INTO kv (k, v) VALUES ('positions', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+      "INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
     );
 
     this.db.transaction(() => {
@@ -328,7 +332,9 @@ export class Engine {
           }
         }
       }
-      if (nextPositions) savePositions.run(JSON.stringify(nextPositions.positions));
+      for (const [kind, st] of Object.entries(nextBySource ?? {})) {
+        savePositions.run(`positions:${kind}`, JSON.stringify(st.positions));
+      }
     })();
 
     return report;
@@ -413,12 +419,11 @@ export class Engine {
   /** Public reply enqueue for adapters acting after commit (work reports, notices). */
   enqueueReply(key: string, threadId: string, body: string): void {
     const now = new Date().toISOString();
-    const n = threadId.match(/\/(issues|pulls)\/(\d+)$/);
     this.db.prepare(`INSERT INTO effect (kind, key, payload, status, attempts, next_due_at, created_at, updated_at)
       VALUES ('reply', ?, ?, 'pending', 0, ?, ?, ?)
       ON CONFLICT(kind, key) DO UPDATE SET payload = excluded.payload, status = 'pending',
         attempts = 0, next_due_at = excluded.next_due_at, last_error = NULL, updated_at = excluded.updated_at`)
-      .run(key, JSON.stringify({ threadId, issueNumber: n ? Number(n[2]) : null, body }), now, now, now);
+      .run(key, JSON.stringify({ threadId, body }), now, now, now);
   }
 
   // ── deliveries (M6-1: PRs the agent opened — the auto-merge sweep's work list) ──

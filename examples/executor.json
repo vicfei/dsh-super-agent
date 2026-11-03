@@ -4,5 +4,13 @@
   "workRoot": ".state/work",
   "timeoutMs": 1800000,
   "maxWorkers": 1,
-  "blockedCommands": ["sudo", "rm -rf /", "curl | sh"]
+  "blockedCommands": [
+    "sudo",
+    "rm -rf /",
+    "curl | sh"
+  ],
+  "sandbox": {
+    "enabled": false,
+    "allowNetwork": false
+  }
 }

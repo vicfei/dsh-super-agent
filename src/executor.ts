@@ -3,9 +3,19 @@
 // background cap enforced by timeout+kill, blocked commands fail by name.
 // Any CLI counts as the worker: the command string sees only env vars, never credentials.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+
+export interface SandboxConfig {
+  /** Confine the worker: read-only root, rw only the worktree, network off. Default false. */
+  enabled: boolean;
+  /** bwrap: include --share-net / sandbox-exec: omit the network deny. Default false. */
+  allowNetwork?: boolean;
+  /** Extra env names the worker may see (base set: PATH HOME LANG LC_ALL TZ TERM TMPDIR SHELL + DSH_*).
+   * Secret-looking names are refused at construction — loudly, not silently. */
+  passEnv?: string[];
+}
 
 export interface ExecutorConfig {
   /** Shell command (sh -c). Env: DSH_DIR, DSH_PROMPT_FILE, DSH_TICKET, DSH_THREAD, DSH_REPO, DSH_AUTHOR. */
@@ -22,6 +32,66 @@ export interface ExecutorConfig {
   maxWorkers: number;
   /** Substrings that refuse execution — "fail when invoked by name". */
   blockedCommands: string[];
+  /** v0.9-2: sandbox the worker subprocess (see SandboxConfig). */
+  sandbox?: SandboxConfig;
+}
+
+const SECRET_ENV_NAME = /token|secret|key|password|credential/i;
+
+/** Env the worker may see — everything else (GITHUB_TOKEN, npm tokens, …) stays outside. */
+export function buildWorkerEnv(full: NodeJS.ProcessEnv, sandbox?: SandboxConfig): NodeJS.ProcessEnv {
+  if (!sandbox?.enabled) return full;
+  const base = ["PATH", "HOME", "LANG", "LC_ALL", "TZ", "TERM", "TMPDIR", "SHELL"];
+  const out: Record<string, string> = {};
+  for (const k of [...base, ...(sandbox.passEnv ?? [])]) {
+    if (full[k] !== undefined) out[k] = full[k];
+  }
+  for (const k of Object.keys(full)) {
+    if (k.startsWith("DSH_")) out[k] = full[k] as string;
+  }
+  return out;
+}
+
+/** Linux bwrap argv that confines a shell command to the worktree.
+ * Order matters: the /tmp tmpfs must precede the workRoot bind or it masks a workRoot under
+ * /tmp; and bwrap shares the host network unless --unshare-net is explicit (verified live). */
+export function bwrapArgs(workRoot: string, sandbox: SandboxConfig, cmd: string): string[] {
+  return [
+    "--ro-bind", "/", "/",
+    "--tmpfs", "/tmp",
+    "--proc", "/proc",
+    "--dev", "/dev",
+    "--bind", workRoot, workRoot,
+    ...(sandbox.allowNetwork ? ["--share-net"] : ["--unshare-net"]),
+    "--", "/bin/sh", "-c", cmd,
+  ];
+}
+
+/** macOS sandbox-exec profile that confines writes to the worktree. */
+export function sandboxExecProfile(workRoot: string, sandbox: SandboxConfig): string {
+  return [
+    "(version 1)",
+    "(allow default)",
+    "(deny file-write*)",
+    `(allow file-write* (subpath "${workRoot}"))`,
+    ...(sandbox.allowNetwork ? [] : ["(deny network*)"]),
+  ].join("");
+}
+
+function assertSandboxAvailable(sandbox: SandboxConfig): void {
+  if (!sandbox.enabled) return;
+  const bad = (sandbox.passEnv ?? []).filter((k) => SECRET_ENV_NAME.test(k));
+  if (bad.length > 0) throw new Error(`sandbox.passEnv refuses secret-looking names: ${bad.join(", ")}`);
+  if (process.platform === "linux" && !which("bwrap")) {
+    throw new Error("sandbox.enabled on linux requires bwrap (apt install bubblewrap) — refusing to run unsandboxed");
+  }
+  if (process.platform === "darwin" && !which("sandbox-exec")) {
+    throw new Error("sandbox.enabled on macOS requires sandbox-exec — refusing to run unsandboxed");
+  }
+}
+
+function which(bin: string): boolean {
+  return spawnSync("/bin/sh", ["-c", `command -v ${bin}`], { stdio: "ignore" }).status === 0;
 }
 
 export interface ExecutorResult {
@@ -35,11 +105,25 @@ export interface ExecutorResult {
 
 const OUTPUT_CAP = 64 * 1024;
 
-function sh(cmd: string, opts: { cwd?: string; timeoutMs: number; env?: NodeJS.ProcessEnv }): Promise<{ code: number | null; output: string }> {
+function sh(cmd: string, opts: { cwd?: string; timeoutMs: number; env?: NodeJS.ProcessEnv; sandbox?: SandboxConfig; workRoot?: string }): Promise<{ code: number | null; output: string }> {
   return new Promise((resolve) => {
+    const sandbox = opts.sandbox?.enabled ? opts.sandbox : undefined;
+    let bin = "/bin/sh";
+    let argv = ["-c", cmd];
+    let env: NodeJS.ProcessEnv = { ...process.env, ...opts.env };
+    if (sandbox && opts.workRoot) {
+      env = { ...buildWorkerEnv(process.env, sandbox), ...opts.env };
+      if (process.platform === "darwin") {
+        bin = "sandbox-exec";
+        argv = ["-p", sandboxExecProfile(opts.workRoot, sandbox), "/bin/sh", "-c", cmd];
+      } else {
+        bin = "bwrap";
+        argv = bwrapArgs(opts.workRoot, sandbox, cmd);
+      }
+    }
     // detached ⇒ own process group, so a timeout can kill the whole tree — killing only the
     // shell leaves grandchildren holding the stdio pipes (and the promise pending).
-    const child = spawn("/bin/sh", ["-c", cmd], { cwd: opts.cwd, env: { ...process.env, ...opts.env }, detached: true });
+    const child = spawn(bin, argv, { cwd: opts.cwd, env, detached: true });
     let out = "";
     const onData = (d: Buffer) => {
       if (out.length < OUTPUT_CAP) out += d.toString("utf8");
@@ -63,7 +147,10 @@ function sh(cmd: string, opts: { cwd?: string; timeoutMs: number; env?: NodeJS.P
 }
 
 export class Executor {
-  constructor(readonly cfg: ExecutorConfig) {}
+  constructor(readonly cfg: ExecutorConfig) {
+    // Loud, early: a missing wrapper or a secret-looking passEnv must never be a silent fallback.
+    assertSandboxAvailable(cfg.sandbox ?? { enabled: false });
+  }
 
   /** Throws on blocked command, prepare failure, or unusable config — the caller records failure. */
   async run(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string): Promise<ExecutorResult> {
@@ -100,6 +187,8 @@ export class Executor {
     const run = await sh(this.cfg.command, {
       cwd: dir,
       timeoutMs: this.cfg.timeoutMs,
+      sandbox: this.cfg.sandbox,
+      workRoot: resolve(this.cfg.workRoot),
       env: {
         DSH_DIR: dir,
         DSH_PROMPT_FILE: promptFile,

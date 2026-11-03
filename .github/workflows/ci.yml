@@ -16,6 +16,7 @@ jobs:
           node-version: ${{ matrix.node }}
       # lockfile must carry only registry.npmjs.org URLs — generated on a box whose npm
       # defaults to a Tencent-internal mirror, which hosted runners cannot reach
+      - run: sudo apt-get install -y bubblewrap # real bwrap confinement test (v0.9-2)
       - run: grep -q tencentyun package-lock.json && exit 1 || true
       - run: npm ci --no-fund --no-audit
       - run: node_modules/.bin/tsc -p tsconfig.json --noEmit

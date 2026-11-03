@@ -77,7 +77,7 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | GitHub App auth — hourly installation tokens, bot identity; person-stages panel | ✅ v0.6 |
 | Feishu / Slack / WeChat / Telegram channels — same admission table, same loop (`im_dm` / `im_group`) | ✅ v0.8 |
 | Watchdog — stuck-work nudge & needs-person reminder, one each, never admits | ✅ v0.9 |
-| Speculative execution, chain-of-recall (Inline & Spill) | later — see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| IM remote approval surface (approve from your phone) | design — see [docs/designs/im-approval-surface.md](docs/designs/im-approval-surface.md) |
 
 ## The article's checklist, one by one
 

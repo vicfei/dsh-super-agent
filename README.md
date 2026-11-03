@@ -79,6 +79,26 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | Watchdog — stuck-work nudge & needs-person reminder, one each, never admits | ✅ v0.9 |
 | Speculative execution, chain-of-recall (Inline & Spill) | later — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
+## The article's checklist, one by one
+
+Every famous concept from *Super-agent: Design Explorations*, and where it lives here:
+
+| Article concept | Here | Since |
+|---|---|---|
+| §1 Continuous / Efficient / Proactive / Persistent | one engine, five channels, parallel worktrees, SQLite restart-safe | v0.2+ |
+| §2 Router/Worker split | deterministic Fast Path (gate) + any-CLI workers in isolated worktrees; the Router is code, not a model — it cannot be talked out of anything | v0.3 |
+| §2 Trigger batching | one Slow-Path call per thread (subscription bypass coalesces the burst) | v0.9 |
+| §3 Two-level filter (Fast/Slow Path) | deterministic gate → LLM assessment, inferred-only, fails closed | v0.3/v0.9 naming |
+| §3 Subscription 直通 | follow-ups join the live ticket as context; no duplicate work | v0.7 |
+| §3 Inline & Spill + chain of recall | 8k inline budget, full text spills to `.dsh/spill/<id>.md` in the worktree | v0.9.1 |
+| §3 Speculative execution + deliver gate | silent rehearsal; **delivery only on a human promote** | v1.0 |
+| §4 Async ReAct, duplex | subprocess workers with env contracts, group-kill timeout, outbox replies | v0.3+ |
+| §5 BYOM, state/env split | any OpenAI-compatible endpoint; SQLite state, worktree environments | v0.3 |
+| §6 Watchdog | observes and nudges — never admits, never kills; `health` CLI | v0.9 |
+| Authorization model (docs/002) | the core: admission tables, explicit/inferred, observe→auto, mandates & revalidation | v0.0.1→ |
+
+**Where we sit in the ecosystem**: IM gateways ([dsh-im](https://github.com/xmanrui/dsh-im), [dsh-wechat](https://github.com/xcisxc29/dsh-wechat)) bring chat *to a DSH session* — a remote control for a human-driven agent. This repo is the other thing: an **admission-controlled autonomous worker** — messages pass a gate, work happens in worktrees, delivery passes approval-gated auto-merge. Different layer, composable in spirit.
+
 ## Quick start
 
 One-liner (no clone needed, once published):

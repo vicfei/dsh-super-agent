@@ -238,6 +238,21 @@ try {
       }
     }
 
+    // Telegram (v0.8.1): armed by env — official Bot API, one @BotFather token.
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      const { TelegramSource, TelegramReplyChannel, TelegramClient } = await import("./telegram.js");
+      const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+      sources.push(new TelegramSource({
+        token: tgToken,
+        loadOffset: () => Number(engine.kvGet("telegram_offset") ?? "0"),
+        saveOffset: (o) => engine.kvSet("telegram_offset", String(o)),
+        log: (l) => console.log(l),
+      }));
+      const tgClient = new TelegramClient({ token: tgToken });
+      channels.push(new TelegramReplyChannel(() => tgClient, (threadId) => Number(threadId.split("/")[1])));
+      console.log("telegram: getUpdates long-poll source armed");
+    }
+
     await runWatch({
       engine,
       sources,

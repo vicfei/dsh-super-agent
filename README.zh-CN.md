@@ -73,7 +73,8 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | 面板——只列等人事项、观察记录、模式切换 | ✅ v0.4.0 |
 | PR 交付——Worker 的新提交自动变分支+Pull Request,报告带链接 | ✅ v0.5.0 |
 | Auto-merge——交付门槛:自己的 PR、allowedList 审批覆盖头提交、±行数上限;CHANGES_REQUESTED 一票否决 | ✅ v0.6 |
-| GitHub App 认证、按人分阶段面板 | M6——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
+| 订阅旁路——开着的工单吸收开单人的后续评论作上下文;resume 把新消息带给 worker | ✅ v0.7 |
+| GitHub App 认证——installation token 每小时轮换、bot 身份;按人分阶段面板 | ✅ v0.6 |
 | 飞书 / Slack 源、投机执行、Watchdog | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## 快速开始
@@ -126,6 +127,8 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 - 合并请求锁定被审批的那个 SHA——头提交变了就下周期重评
 
 > **单人运营者注意:**"审批"那一条正是交付要走 GitHub App 认证(下一节)的原因。用个人令牌时,agent 的 PR 作者*是你本人*——而 GitHub 永远不允许你批准自己的 PR,合并门槛就永远凑不齐。团队可以互批;单人必须靠 bot 身份。
+
+活着的工单会把后续评论收作**上下文**而不是开出重复工单——订阅旁路:你的工单开着时,在同一线程补一句"顺便也处理 X",会累积进 worker 的下一次运行(一张工单、一个 worktree、一个 PR);resume 同样把续跑消息带给 worker。其他人的消息不会并入——把他们的文本放进 worker 上下文会扩大注入面。
 
 **GitHub App 认证(单人使用 auto-merge 时为必需)。** 默认一切走个人令牌(`GITHUB_TOKEN`):回复以*你本人*身份发出,限额按用户算。改配 GitHub App 后,agent 以自己的主体身份行动:PR 和回复都带 App 的 bot 身份(门禁本就把 bot 封顶在 inferred——bot 永远发不出 explicit 请求),你由此成为合法审批人;限额按安装计,installation token 每小时轮换——环境里不再有长效密钥:
 

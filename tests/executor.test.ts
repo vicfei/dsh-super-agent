@@ -26,10 +26,10 @@ const policy: Policy = {
 };
 
 let seq = 0;
-function acceptItem(): IngestItem {
+function acceptItem(threadId = "github:o/r/issues/5"): IngestItem {
   const t: Trigger = {
     id: `github:issue:${++seq}`,
-    source: "github", scope: "issue", threadId: "github:o/r/issues/5",
+    source: "github", scope: "issue", threadId,
     author: { login: "alice", isBot: false }, addressing: true,
     body: `task ${seq}: summarize HEAD`, ts: "2026-11-02T00:00:00Z",
   };
@@ -156,7 +156,8 @@ describe("runWork", () => {
   });
 
   it("slots: maxWorkers=1 runs one ticket per invocation; the second stays queued", async () => {
-    engine.ingest([acceptItem(), acceptItem()]);
+    // two threads: same-thread accepts would join one ticket (subscription bypass, v0.7-1)
+    engine.ingest([acceptItem(), acceptItem("github:o/r/issues/6")]);
     const first = await runWork(engine, new Executor(cfg({ maxWorkers: 1 })), "o/r", null);
     expect(first).toHaveLength(1);
     expect(engine.tickets().filter((t) => t.stage === "queued")).toHaveLength(1);

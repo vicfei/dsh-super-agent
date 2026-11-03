@@ -80,10 +80,11 @@ describe("ingest", () => {
     expect(engine.takeDue()).toHaveLength(0);
   });
 
-  it("several accepts on one thread open several tickets (no one-live-per-thread limit)", () => {
+  it("same opener's accepts on one thread join the live ticket (subscription bypass, v0.7-1)", () => {
     const r = engine.ingest([item(), item({ id: "github:issue:900", body: "second task @agent" })]);
-    expect(r.ticketsOpened).toBe(2);
-    expect(engine.tickets()).toHaveLength(2);
+    expect(r.ticketsOpened).toBe(1);
+    expect(r.joined).toBe(1);
+    expect(engine.tickets()).toHaveLength(1);
   });
 
   it("positions persist with the batch (exactly-once home)", () => {
@@ -157,6 +158,59 @@ describe("stop / resume / revalidation", () => {
   });
 });
 
+describe("subscription bypass (v0.7-1)", () => {
+  it("opener's follow-up on an open ticket joins it — no second ticket, no reply storm", () => {
+    engine.ingest([item()]); // ticket #1 open
+    const r = engine.ingest([item({ id: "github:issue_comment:50", scope: "issue_comment", body: "also handle the edge case" })]);
+    expect(r).toMatchObject({ joined: 1, ticketsOpened: 0, resumed: 0 });
+    const tickets = engine.tickets();
+    expect(tickets).toHaveLength(1);
+    expect(tickets[0].followUps).toBe(1);
+    // the join is silent: only the original ticket-open reply exists
+    expect(engine.takeDue().filter((f) => f.kind === "reply")).toHaveLength(1);
+    // audit kept every fact: one decision per trigger
+    expect(engine.decisions(50)).toHaveLength(2);
+  });
+
+  it("joined follow-ups reach the worker: the claim's context carries them in order", () => {
+    engine.ingest([item({ body: "fix the login bug" })]);
+    engine.ingest([item({ id: "github:issue_comment:51", scope: "issue_comment", body: "second part: also the token refresh" })]);
+    const claimed = engine.claimQueued(5);
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0].body).toContain("fix the login bug");
+    expect(claimed[0].body).toContain("--- follow-up");
+    expect(claimed[0].body).toContain("second part: also the token refresh");
+  });
+
+  it("resume carries the resuming message to the worker (the old gap: original body only)", () => {
+    engine.ingest([item({ body: "original request" })]);
+    engine.stopTicket(1, "panel");
+    engine.ingest([item({ id: "github:issue_comment:52", scope: "issue_comment", body: "the resume instructions" })]);
+    expect(engine.tickets()[0].resumedCount).toBe(1);
+    const claimed = engine.claimQueued(5);
+    expect(claimed[0].body).toContain("original request");
+    expect(claimed[0].body).toContain("the resume instructions");
+  });
+
+  it("follow-ups on a needs-person ticket join context but do not re-arm it", () => {
+    engine.ingest([item()]);
+    engine.startAssignment(1, "");
+    engine.endAssignment(1, 1, false, "boom"); // failed → needs-person
+    const r = engine.ingest([item({ id: "github:issue_comment:53", scope: "issue_comment", body: "extra context while broken" })]);
+    expect(r.joined).toBe(1);
+    expect(engine.tickets()[0].stage).toBe("needs-person");
+    expect(engine.claimQueued(5)).toHaveLength(0);
+  });
+
+  it("a different opener on the same thread is not bypassed — their message is their own business", () => {
+    engine.ingest([item()]); // alice's open ticket
+    const r = engine.ingest([item({ id: "github:issue_comment:54", author: { login: "bob", isBot: false }, scope: "issue_comment", body: "mine" })]);
+    expect(r.joined).toBe(0);
+    expect(r.ticketsOpened).toBe(1);
+    expect(engine.tickets().map((t) => t.opener).sort()).toEqual(["alice", "bob"]);
+  });
+});
+
 describe("effects (outbox)", () => {
   it("same kind+key coalesces: one row, payload replaced, attempts reset", () => {
     engine.ingest([item()]);
@@ -164,7 +218,7 @@ describe("effects (outbox)", () => {
     engine.failEffect(first.id, "boom"); // attempts → 1, due later
     expect(engine.takeDue()).toHaveLength(0); // backed off
 
-    engine.ingest([item({ id: "github:issue:31" })]); // new ticket → new key, not coalescing
+    engine.ingest([item({ id: "github:issue:31", threadId: "github:o/r/issues/6" })]); // a different thread → genuinely new ticket/key (same-thread would bypass into #1)
     // Re-enqueue the same key directly via a second identical ticket id simulation:
     const before = engine.db.prepare("SELECT COUNT(*) c FROM effect").get() as { c: number };
     expect(before.c).toBe(2);

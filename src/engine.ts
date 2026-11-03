@@ -84,6 +84,15 @@ CREATE TABLE IF NOT EXISTS delivery (
   UNIQUE(repo, pr_number)
 );
 CREATE INDEX IF NOT EXISTS idx_delivery_state ON delivery(state);
+
+CREATE TABLE IF NOT EXISTS ticket_followup (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id INTEGER NOT NULL REFERENCES ticket(id),
+  trigger_id TEXT NOT NULL REFERENCES trigger(id),
+  ts TEXT NOT NULL,
+  UNIQUE(ticket_id, trigger_id)
+);
+CREATE INDEX IF NOT EXISTS idx_followup_ticket ON ticket_followup(ticket_id);
 `;
 
 export interface IngestItem {
@@ -97,6 +106,8 @@ export interface IngestReport {
   duplicates: number;
   ticketsOpened: number;
   resumed: number;
+  /** Subscription bypass: follow-ups that joined an open ticket instead of spawning one (v0.7-1). */
+  joined: number;
   refusals: string[];
 }
 
@@ -113,6 +124,8 @@ export interface TicketView {
   stoppedBy?: string;
   revokedReason?: string;
   resumedCount: number;
+  /** Subscription-bypass follow-ups joined into this ticket's context. */
+  followUps: number;
   createdAt: string;
 }
 
@@ -225,7 +238,7 @@ export class Engine {
 
   ingest(batch: IngestItem[], nextPositions?: SourceState): IngestReport {
     const now = new Date().toISOString();
-    const report: IngestReport = { fresh: 0, duplicates: 0, ticketsOpened: 0, resumed: 0, refusals: [] };
+    const report: IngestReport = { fresh: 0, duplicates: 0, ticketsOpened: 0, resumed: 0, joined: 0, refusals: [] };
     const policy = this.policy();
     const policyVersion = policy?.version ?? 0;
 
@@ -268,6 +281,19 @@ export class Engine {
         insertDecision.run(t.id, kind, strength, basis, wouldAccept, policyVersion, now);
 
         if (item.resolution.action === "accept") {
+          // Subscription bypass (v0.7-1, issue #40): a thread with a live ticket fans out to that
+          // ticket without re-evaluation — the opener's follow-up joins the ticket's context
+          // instead of spawning a duplicate. Same trust as the automatic resume below.
+          const open = this.db
+            .prepare("SELECT id FROM ticket WHERE thread_id = ? AND opener_login = ? AND state = 'open' ORDER BY id DESC LIMIT 1")
+            .get(t.threadId, t.author.login) as { id: number } | undefined;
+          if (open) {
+            this.db.prepare("INSERT INTO ticket_followup (ticket_id, trigger_id, ts) VALUES (?, ?, ?)").run(open.id, t.id, now);
+            this.db.prepare("UPDATE ticket SET updated_at = ? WHERE id = ?").run(now, open.id);
+            report.joined++;
+            continue;
+          }
+
           // An admitted message from an opener with an ended ticket on this thread goes to that
           // ticket (docs/002: "Ended Tickets keep Mandates; a person's message on their own
           // Threads resumes them"); a revoked mandate takes none of its waiting messages;
@@ -285,6 +311,9 @@ export class Engine {
               this.db
                 .prepare("UPDATE ticket SET state = 'open', resumed_count = resumed_count + 1, updated_at = ? WHERE id = ?")
                 .run(now, ended.id);
+              // The resuming message is context too (v0.7-1): without this, the re-claim would
+              // only ever show the worker the original request.
+              this.db.prepare("INSERT INTO ticket_followup (ticket_id, trigger_id, ts) VALUES (?, ?, ?)").run(ended.id, t.id, now);
               report.resumed++;
               enqueue.run("reply", `ticket-resume:${ended.id}:${Number(ended.resumed_count) + 1}`,
                 JSON.stringify(replyPayload(t, Number(ended.id), "resumed", ended.strength as Strength)), now, now, now);
@@ -334,7 +363,8 @@ export class Engine {
   // ── assignments (docs/001: the binding of a Ticket to one Executor instance) ──
 
   /** Open tickets claimable by work: never assigned, or last assignment ended cleanly
-   *  (a resumed ticket is re-claimable; a failed one waits for a person). */
+   * (a resumed ticket is re-claimable; a failed one waits for a person). The body is the
+   * accumulated context: original request + subscription-bypass follow-ups in order. */
   claimQueued(limit: number): { id: number; threadId: string; body: string; author: string }[] {
     const rows = this.db.prepare(`
       SELECT t.id, t.thread_id, tr.body, tr.author_login
@@ -343,10 +373,20 @@ export class Engine {
         AND la.id = (SELECT MAX(b.id) FROM assignment b WHERE b.ticket_id = t.id)
       WHERE t.state = 'open' AND (la.id IS NULL OR (la.state = 'ended' AND la.exit_code = 0))
       ORDER BY t.id LIMIT ?`).all(limit) as Record<string, unknown>[];
-    return rows.map((r) => ({
-      id: Number(r.id), threadId: String(r.thread_id),
-      body: String(r.body), author: String(r.author_login),
-    }));
+    const followupsOf = this.db.prepare(`
+      SELECT tr.body, tr.author_login, f.ts FROM ticket_followup f
+      JOIN trigger tr ON tr.id = f.trigger_id WHERE f.ticket_id = ? ORDER BY f.id`);
+    return rows.map((r) => {
+      const id = Number(r.id);
+      const extra = (followupsOf.all(id) as Record<string, unknown>[]).map(
+        (f) => `--- follow-up ${String(f.ts)} by @${String(f.author_login)} ---\n${String(f.body).slice(0, 2000)}`,
+      );
+      return {
+        id, threadId: String(r.thread_id),
+        body: [String(r.body), ...extra].join("\n\n").slice(0, 12_000),
+        author: String(r.author_login),
+      };
+    });
   }
 
   startAssignment(ticketId: number, worktree: string): number {
@@ -443,6 +483,10 @@ export class Engine {
     for (const a of this.db.prepare("SELECT ticket_id, state, exit_code FROM assignment ORDER BY id").all() as Record<string, unknown>[]) {
       lastAssignment.set(Number(a.ticket_id), { state: String(a.state), exitCode: a.exit_code === null ? null : Number(a.exit_code) });
     }
+    const followUps = new Map<number, number>();
+    for (const f of this.db.prepare("SELECT ticket_id, COUNT(*) c FROM ticket_followup GROUP BY ticket_id").all() as Record<string, unknown>[]) {
+      followUps.set(Number(f.ticket_id), Number(f.c));
+    }
     return rows.map((r) => {
       const id = Number(r.id);
       const state = r.state as "open" | "ended";
@@ -465,6 +509,7 @@ export class Engine {
         ...(r.stopped_by !== null ? { stoppedBy: String(r.stopped_by) } : {}),
         ...(r.revoked_reason !== null ? { revokedReason: String(r.revoked_reason) } : {}),
         resumedCount: Number(r.resumed_count),
+        followUps: followUps.get(id) ?? 0,
         createdAt: String(r.created_at),
       };
     });

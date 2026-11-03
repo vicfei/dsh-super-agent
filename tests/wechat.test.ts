@@ -153,13 +153,13 @@ describe("wechatLogin (QR flow)", () => {
   it("fetches the QR, polls until confirmed, returns credentials + returned baseurl", async () => {
     let calls = 0;
     const fetchImpl = mockFetch((url) => {
-      if (url.includes("get_bot_qrcode")) return { qrcode: "QRID", qrcode_img_content: "aW1n" };
+      if (url.includes("get_bot_qrcode")) return { qrcode: "QRID", qrcode_img_content: "https://liteapp.weixin.qq.com/q/x" };
       calls++;
       return calls === 1 ? { status: "scaned" } : { status: "confirmed", bot_token: "tok_1", baseurl: "https://ilink.redirected" };
     });
-    const qrs: string[] = [];
-    const auth = await wechatLogin((qr) => qrs.push(qr.qrcode), { fetchImpl, pollMs: 1 });
-    expect(qrs).toEqual(["QRID"]);
+    const qrs: { qrcode: string; imgContent: string }[] = [];
+    const auth = await wechatLogin((qr) => qrs.push({ qrcode: qr.qrcode, imgContent: qr.imgContent }), { fetchImpl, pollMs: 1 });
+    expect(qrs).toEqual([{ qrcode: "QRID", imgContent: "https://liteapp.weixin.qq.com/q/x" }]);
     expect(auth).toEqual({ token: "tok_1", baseUrl: "https://ilink.redirected" });
   });
 

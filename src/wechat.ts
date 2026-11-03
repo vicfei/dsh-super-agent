@@ -186,17 +186,20 @@ export class WechatApiClient {
 // ── login (terminal QR) ─────────────────────────────────────────────────────────
 
 export interface QrPayload {
+  /** The QR id, used for status polling. */
   qrcode: string;
-  imgBase64: string;
+  /** The QR's encoded content — in practice a liteapp.weixin.qq.com URL to render as a QR. */
+  imgContent: string;
 }
 
 /**
- * QR login flow: fetch a QR (the caller renders/saves the image — it must be scanned by the
- * human's WeChat app), long-poll status until confirmed, return credentials.
+ * QR login flow: fetch a QR (the caller renders it — it must be scanned by the human's WeChat
+ * app), long-poll status until confirmed, return credentials. Verified live: qrcode_img_content
+ * is a URL, not an image payload.
  */
 export async function wechatLogin(
   onQr: (qr: QrPayload) => void,
-  opts: { apiBase?: string; fetchImpl?: typeof fetch; pollMs?: number } = {},
+  opts: { apiBase?: string; fetchImpl?: typeof fetch; pollMs?: number; maxWaitMs?: number } = {},
 ): Promise<WechatAuth> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const base = (opts.apiBase ?? WECHAT_DEFAULT_BASE).replace(/\/$/, "");
@@ -213,9 +216,11 @@ export async function wechatLogin(
   if (!qrRes.ok) throw new Error(`wechat get_bot_qrcode → HTTP ${qrRes.status}`);
   const qr = (await qrRes.json()) as { qrcode?: string; qrcode_img_content?: string };
   if (!qr.qrcode) throw new Error("wechat get_bot_qrcode returned no qrcode");
-  onQr({ qrcode: qr.qrcode, imgBase64: qr.qrcode_img_content ?? "" });
+  onQr({ qrcode: qr.qrcode, imgContent: qr.qrcode_img_content ?? "" });
 
+  const deadline = Date.now() + (opts.maxWaitMs ?? 180_000);
   for (;;) {
+    if (Date.now() > deadline) throw new Error("wechat login timed out waiting for the scan — run wechat-login again");
     await new Promise((r) => setTimeout(r, opts.pollMs ?? 2000));
     const stRes = await fetchImpl(`${base}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qr.qrcode)}`, { headers });
     if (!stRes.ok) throw new Error(`wechat get_qrcode_status → HTTP ${stRes.status}`);

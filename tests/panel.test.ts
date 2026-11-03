@@ -55,6 +55,7 @@ describe("panel HTTP API", () => {
     const html = await (await fetch(`${base}/`)).text();
     expect(html).toContain("healthy state takes no space");
     expect(html).toContain("Messages cannot change permissions");
+    expect(html).toContain("By person"); // M6-3 per-person section
   });
 
   it("state exposes policy, tickets, decisions with trigger context", async () => {

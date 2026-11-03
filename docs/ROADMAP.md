@@ -42,7 +42,7 @@ Vertical slice first: one Source, one gate, one executor, one reply channel. Eve
 - [x] npm publish (`@vicfei/dsh-super-agent`) + npx path — packaged (bin `dsh-super-agent`, typed programmatic API), publish workflow on tag/manual dispatch via **Trusted Publishing (OIDC)** — validated by v0.5.1 (needs node ≥22.14 + npm ≥11.5.1 + `repository.url` matching provenance)
 - [x] DX polish (v0.5.1): `--help`/`--version`, friendly unknown-option errors, config auto-scaffold from packaged examples, token guidance, issue templates, CONTRIBUTING
 
-## Milestone 6 — autonomy with structural brakes (in progress)
+## Milestone 6 — autonomy with structural brakes (done, v0.6.0)
 
 The loop currently ends at "PR opened". M6 closes it while keeping every brake structural —
 merge conditions are checkable facts, not model judgment.

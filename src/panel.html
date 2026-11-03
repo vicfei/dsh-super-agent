@@ -50,6 +50,9 @@
 <h2>Awaiting a human</h2>
 <div id="awaiting"></div>
 
+<h2>By person</h2>
+<div id="persons"></div>
+
 <h2>Pull requests</h2>
 <div id="deliveries"></div>
 
@@ -91,6 +94,32 @@ async function render() {
           <button class="stop" onclick="stopTicket(${t.id})">stop</button></div>`).join('')
         + revoked.map(t => `<div class="card"><span class="badge b-ignore">revoked</span>
           ticket #${t.id} — ${esc(t.revokedReason)}</div>`).join('');
+
+  // By person (M6-3): the opener is who the work is *for* — one card per person with their
+  // stage counts and where their delivered PRs stand.
+  const openerOf = new Map(s.tickets.map(t => [t.id, t.opener]));
+  const persons = new Map();
+  for (const t of s.tickets) {
+    const p = persons.get(t.opener) ?? { tickets: [], deliveries: [] };
+    p.tickets.push(t);
+    persons.set(t.opener, p);
+  }
+  for (const d of s.deliveries || []) {
+    const who = openerOf.get(d.ticketId) ?? '(unknown opener)';
+    const p = persons.get(who) ?? { tickets: [], deliveries: [] };
+    p.deliveries.push(d);
+    persons.set(who, p);
+  }
+  document.getElementById('persons').innerHTML = persons.size === 0
+    ? '<div class="quiet">no tickets yet</div>'
+    : [...persons.entries()].map(([who, p]) => {
+        const counts = ['queued', 'working', 'needs-person', 'ended']
+          .map(st => p.tickets.filter(t => t.stage === st).length)
+          .map((n, i) => n > 0 ? `<span class="quiet">${['queued','working','needs-person','ended'][i]}:${n}</span>` : '')
+          .filter(Boolean).join(' · ');
+        const dels = p.deliveries.map(d => `PR #${d.prNumber} ${d.state}`).join(' · ');
+        return `<div class="card"><b>${esc(who)}</b> — ${counts || 'no open work'}${dels ? `<div class="quiet">${dels}</div>` : ''}</div>`;
+      }).join('');
 
   const deliveries = s.deliveries || [];
   const mergeOn = !!(s.policy && s.policy.merge && s.policy.merge.enabled);

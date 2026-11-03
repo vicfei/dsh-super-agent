@@ -77,13 +77,20 @@ export class Executor {
     const repoDir = resolve(this.cfg.repoDir);
     mkdirSync(dir, { recursive: true });
 
-    // -B makes re-running a resumed ticket idempotent (branch reset instead of "already exists").
-    const prepare = this.cfg.prepare ?? `git worktree add -B {branch} {dir}`;
-    const prep = await sh(prepare.replaceAll("{dir}", JSON.stringify(dir)).replaceAll("{branch}", branch), {
-      cwd: repoDir,
-      timeoutMs: 10 * 60 * 1000, // prepare gets ten minutes (docs/003)
-    });
-    if (prep.code !== 0) throw new Error(`prepare failed (exit ${prep.code}): ${prep.output.trim().slice(0, 300)}`);
+    // docs/003: prepare once — a resumed ticket reuses its existing worktree. `worktree add`
+    // refuses when the branch is already checked out at this path, which is the resume case,
+    // not an error (found live in the v0.6 dogfood, issue #36). baseSha then means "diff base
+    // for THIS run": only new commits count as deliverable.
+    const headBranch = (await sh(`git -C ${JSON.stringify(dir)} symbolic-ref -q --short HEAD`, { timeoutMs: 10_000 })).output.trim();
+    if (headBranch !== branch) {
+      // -B makes re-adding after a manual branch reset idempotent (branch reset instead of "already exists").
+      const prepare = this.cfg.prepare ?? `git worktree add -B {branch} {dir}`;
+      const prep = await sh(prepare.replaceAll("{dir}", JSON.stringify(dir)).replaceAll("{branch}", branch), {
+        cwd: repoDir,
+        timeoutMs: 10 * 60 * 1000, // prepare gets ten minutes (docs/003)
+      });
+      if (prep.code !== 0) throw new Error(`prepare failed (exit ${prep.code}): ${prep.output.trim().slice(0, 300)}`);
+    }
 
     const promptFile = join(dir, "DSH_PROMPT.md");
     writeFileSync(promptFile, renderPrompt(ticket, trigger, repo));

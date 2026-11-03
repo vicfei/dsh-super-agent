@@ -99,6 +99,24 @@ describe("Executor", () => {
     const exec = new Executor(cfg({ repoDir: join(dir, "nope") }));
     await expect(exec.run({ id: 3, threadId: "t" }, { body: "b", author: "a" }, "o/r")).rejects.toThrow(/prepare failed/);
   });
+
+  it("resume reuses the existing ticket worktree instead of failing to re-add it (#36)", async () => {
+    const exec = new Executor(cfg());
+    const t = { id: 9, threadId: "github:o/r/issues/5" };
+    const first = await exec.run(t, { body: "do it", author: "alice" }, "o/r");
+    expect(first.exitCode).toBe(0);
+
+    // The resumed run: same ticket, worktree (and its checked-out branch) still on disk.
+    // Before #36 this died with "fatal: 'dsh/ticket-9' is already used by worktree".
+    const second = await exec.run(t, { body: "and once more", author: "alice" }, "o/r");
+    expect(second.exitCode).toBe(0);
+    expect(second.worktree).toBe(first.worktree);
+
+    // On reuse, baseSha is the diff base for THIS run: the worker's old commits are behind it,
+    // so only new commits count as deliverable (no duplicate PR on a no-op resume).
+    const head = execSync(`git -C ${JSON.stringify(first.worktree)} rev-parse HEAD`).toString().trim();
+    expect(second.baseSha).toBe(head);
+  });
 });
 
 describe("runWork", () => {

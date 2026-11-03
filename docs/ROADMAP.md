@@ -78,11 +78,13 @@ merge conditions are checkable facts, not model judgment.
       must precede the worktree bind
 - [x] Trigger batching (v0.9-3): one Slow-Path call per thread (subscription bypass coalesces
       the burst); Fast Path / Slow Path vocabulary aligned with the article in docs
+- [x] Inline & Spill + chain of recall (v0.9.1): 8k inline budget, over-budget follow-ups spill
+      in full to engine rows + `.dsh/spill/<id>.md` files materialized in the worktree before
+      the run; the worker recalls by opening the pointer
 
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)
-- Chain-of-recall context (Inline & Spill) — 0.9.x
 - Speculative execution with a deliver gate
 - WeChat polish: scanner ilink_user_id auto-registry, typing heartbeat
 

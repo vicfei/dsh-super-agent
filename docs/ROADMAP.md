@@ -82,10 +82,16 @@ merge conditions are checkable facts, not model judgment.
       in full to engine rows + `.dsh/spill/<id>.md` files materialized in the worktree before
       the run; the worker recalls by opening the pointer
 
+## Milestone 10 — the deliver gate (done, v1.0.0)
+
+- [x] Speculative execution + deliver gate (#69): observe-mode shadows may rehearse in total
+      silence; delivery happens only on a human promote (tickets promote / panel) via the
+      watch promote sweep — idempotent, capped, audit-intact
+- [x] README: the article's checklist one-by-one + ecosystem positioning (#70)
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)
-- Speculative execution with a deliver gate
 - WeChat polish: scanner ilink_user_id auto-registry, typing heartbeat
 
 ## Non-goals (v0)

@@ -88,8 +88,8 @@ describe("ingest", () => {
   });
 
   it("positions persist with the batch (exactly-once home)", () => {
-    engine.ingest([item()], { positions: { issue: 7, issue_comment: 0, pr: 0, review_comment: 0 } });
-    expect(engine.positions().positions.issue).toBe(7);
+    engine.ingest([item()], { github: { positions: { issue: 7, issue_comment: 0, pr: 0, review_comment: 0 } } });
+    expect(engine.sourceState("github").positions.issue).toBe(7);
   });
 });
 

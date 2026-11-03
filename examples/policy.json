@@ -48,6 +48,18 @@
       "unlistedNotAddressing": "ignore"
     },
     {
+      "scope": "im_dm",
+      "listedNotAddressing": "inferred",
+      "unlistedAddressing": "ignore",
+      "unlistedNotAddressing": "ignore"
+    },
+    {
+      "scope": "im_group",
+      "listedNotAddressing": "inferred",
+      "unlistedAddressing": "ignore",
+      "unlistedNotAddressing": "ignore"
+    },
+    {
       "scope": "ci",
       "listedNotAddressing": "ignore",
       "unlistedAddressing": "ignore",

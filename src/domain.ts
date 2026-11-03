@@ -12,7 +12,7 @@ export interface Actor {
 export interface Trigger {
   /** Source-scoped unique id; accepting twice yields one Ticket. */
   id: string;
-  source: "github";
+  source: "github" | "feishu" | "slack" | "wechat";
   /** Receiving scope — the admission table's row key. */
   scope: Scope;
   /** Triggers of one conversation, as defined by the Source (e.g. `github:owner/repo/issues/42`). */
@@ -31,7 +31,11 @@ export type Scope =
   | "pr"
   | "pr_comment"
   | "review_comment"
-  | "ci";
+  | "ci"
+  /** IM direct message (WeChat/Feishu/Slack DM) — shared row for all IM sources. */
+  | "im_dm"
+  /** IM group chat / channel message — shared row for all IM sources. */
+  | "im_group";
 
 /** Strength of an admitted Trigger. Explicit works in every accept mode; inferred is mode-gated. */
 export type Strength = "explicit" | "inferred";

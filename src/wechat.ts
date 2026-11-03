@@ -299,7 +299,9 @@ export class WechatSource implements Source {
     } finally {
       clearTimeout(timer);
     }
-    if (resp.ret === 0) {
+    // Success carries no status at all (verified live): {msgs, sync_buf?, get_updates_buf} —
+    // ret/errcode appear only on failure. Treat absent-status as success, never as an error.
+    if ((resp.ret === undefined || resp.ret === 0) && resp.errcode === undefined) {
       if (resp.get_updates_buf) this.opts.store.saveCursor(resp.get_updates_buf);
       const triggers: Trigger[] = [];
       for (const m of resp.msgs ?? []) {

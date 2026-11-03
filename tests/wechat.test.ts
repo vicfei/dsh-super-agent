@@ -100,6 +100,17 @@ describe("WechatSource (iLink long-poll)", () => {
     expect(seen[1].body.get_updates_buf).toBe("Y3Vyc29yMg==");
   });
 
+  it("statusless success shape (verified live): no ret field, msgs flow, cursor saved", async () => {
+    const store = new MemoryWechatStore();
+    store.saveAuth({ token: "t0", baseUrl: "https://ilink.test" });
+    const fetchImpl = mockFetch(() => ({ msgs: [msg()], get_updates_buf: "YnVmMg==" })); // no ret — the real success shape
+    const src = new WechatSource({ store, fetchImpl, pollTimeoutMs: 3000 });
+    const { triggers } = await src.collect({ positions: {} });
+    expect(triggers.map((t) => t.id)).toEqual(["wechat:msg/88001"]);
+    expect(store.loadCursor()).toBe("YnVmMg==");
+    expect(store.loadRoute("wechat:peer/wxid_alice")?.contextToken).toBe("ctx_tok_1");
+  });
+
   it("not-logged-in is a logged no-op, not a crash; -14 clears all state", async () => {
     const store = new MemoryWechatStore();
     const logs: string[] = [];

@@ -75,7 +75,8 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | Auto-merge——交付门槛:自己的 PR、allowedList 审批覆盖头提交、±行数上限;CHANGES_REQUESTED 一票否决 | ✅ v0.6 |
 | 订阅旁路——开着的工单吸收开单人的后续评论作上下文;resume 把新消息带给 worker | ✅ v0.7 |
 | GitHub App 认证——installation token 每小时轮换、bot 身份;按人分阶段面板 | ✅ v0.6 |
-| 飞书 / Slack 源、投机执行、Watchdog | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
+| 飞书 / Slack / 微信通道——同一张准许表,同一回路(`im_dm` / `im_group`) | ✅ v0.8 |
+| 投机执行、Watchdog、执行器沙箱 | v0.9——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## 快速开始
 

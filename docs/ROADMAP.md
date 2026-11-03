@@ -55,10 +55,19 @@ merge conditions are checkable facts, not model judgment.
       replies from the bot identity, branch push rides the same credential, PAT fallback
 - [x] Panel person-stages: per-person ticket/delivery queues (panel-side grouping over existing state)
 
+## Milestone 8 — channels (done, v0.8.0)
+
+- [x] Multi-source base: Source/ReplyChannel contracts, per-source read states (v0.7 blob migrates),
+      reply routing by threadId prefix, `im_dm`/`im_group` admission rows shared by all IM sources
+- [x] Feishu: self-built app, SDK WebSocket long connection (no public URL), im/v1 replies
+- [x] Slack: Socket Mode (no public URL), auth.test bot-id discovery, chat.postMessage replies
+- [x] WeChat: iLink Bot Protocol — QR login (`wechat-login`), long-poll with opaque cursor
+      (self-aborting, never blocks a cycle), fail-closed group addressing, context_token routing,
+      -14 state clearing; text-first (AES media later)
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)
-- Feishu / Slack sources (multi-source watch routing first)
 - Batching Router, chain-of-recall context, speculative execution, Watchdog
 
 ## Non-goals (v0)

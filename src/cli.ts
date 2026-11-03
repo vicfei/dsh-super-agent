@@ -212,6 +212,17 @@ try {
       console.log("feishu: long-connection source armed (im.message.receive_v1) — set FEISHU_BOT_OPEN_ID for precise group @mention detection");
     }
 
+    // Slack (v0.8 M8-3): armed by env — Socket Mode, no public URL; bot id via auth.test.
+    const slackBot = process.env.SLACK_BOT_TOKEN;
+    const slackApp = process.env.SLACK_APP_TOKEN;
+    if (slackBot && slackApp) {
+      const { SlackSource, SlackReplyChannel, createSlackSender } = await import("./slack.js");
+      const { send, botUserId } = await createSlackSender(slackBot);
+      sources.push(new SlackSource({ appToken: slackApp, botToken: slackBot, ...(botUserId ? { botUserId } : {}) }));
+      channels.push(new SlackReplyChannel(send));
+      console.log(`slack: socket-mode source armed${botUserId ? ` (@mention detection for <@${botUserId}>)` : ""}`);
+    }
+
     await runWatch({
       engine,
       sources,

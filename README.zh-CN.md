@@ -125,7 +125,9 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 - 没有任何 allowedList 评审的最新立场是 CHANGES_REQUESTED(一人否决,直到重审)
 - 合并请求锁定被审批的那个 SHA——头提交变了就下周期重评
 
-**GitHub App 认证(可选,推荐)。** 默认一切走个人令牌(`GITHUB_TOKEN`):回复以*你本人*身份发出,限额按用户算。改配 GitHub App 后,回复以 App 的 bot 身份发出(门禁本就把 bot 封顶在 inferred——bot 永远发不出 explicit 请求),限额按安装计,installation token 每小时轮换——环境里不再有长效密钥:
+> **单人运营者注意:**"审批"那一条正是交付要走 GitHub App 认证(下一节)的原因。用个人令牌时,agent 的 PR 作者*是你本人*——而 GitHub 永远不允许你批准自己的 PR,合并门槛就永远凑不齐。团队可以互批;单人必须靠 bot 身份。
+
+**GitHub App 认证(单人使用 auto-merge 时为必需)。** 默认一切走个人令牌(`GITHUB_TOKEN`):回复以*你本人*身份发出,限额按用户算。改配 GitHub App 后,agent 以自己的主体身份行动:PR 和回复都带 App 的 bot 身份(门禁本就把 bot 封顶在 inferred——bot 永远发不出 explicit 请求),你由此成为合法审批人;限额按安装计,installation token 每小时轮换——环境里不再有长效密钥:
 
 1. 在 [github.com/settings/apps/new](https://github.com/settings/apps/new) 创建用户级 App——权限只需 **Issues: read & write、Pull requests: read & write、Contents: read & write、Metadata: read**;不需要 webhook/订阅(全部轮询)
 2. 安装到你的仓库,然后设环境变量:`GITHUB_APP_ID`、`GITHUB_APP_PRIVATE_KEY`(PEM 内容,`\n` 转义——或 `GITHUB_APP_PRIVATE_KEY_PATH` 指文件)、可选 `GITHUB_APP_INSTALLATION_ID`(省略时从 `--repo` 自动发现)

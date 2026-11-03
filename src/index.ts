@@ -4,7 +4,8 @@
 export * from "./domain.js";
 export { evaluateGate, resolveCandidate, type GateResult, type Resolution, type Assessment } from "./gate.js";
 export { Engine, type IngestItem, type TicketView, type DecisionView, type IngestReport } from "./engine.js";
-export { GitHubClient } from "./github/client.js";
+export { GitHubClient, type TokenProvider } from "./github/client.js";
+export { AppTokenProvider, appAuthFromEnv, signAppJwt, type AppAuthEnv, type AppAuthOptions } from "./github/app-auth.js";
 export { GitHubSource, isBotActor } from "./github/source.js";
 export { FileSourceState, type StateStore, type SourceState } from "./github/state.js";
 export { Executor, renderPrompt, type ExecutorConfig, type ExecutorResult } from "./executor.js";

@@ -53,29 +53,49 @@ export interface GhReviewComment extends GhItemBase {
   in_reply_to_id?: number;
 }
 
+/** Mutable credential source (App installation tokens): fetched per request, invalidated on 401. */
+export interface TokenProvider {
+  get(): Promise<string>;
+  /** The client calls this when a request got 401 — drop cached state before the single retry. */
+  onAuthFailure(): void;
+}
+
 export class GitHubClient {
   private readonly fetchImpl: typeof fetch;
   private readonly apiBase: string;
 
-  constructor(opts: { token?: string; fetchImpl?: typeof fetch; apiBase?: string } = {}) {
+  constructor(opts: { token?: string; tokenProvider?: TokenProvider; fetchImpl?: typeof fetch; apiBase?: string } = {}) {
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.apiBase = opts.apiBase ?? "https://api.github.com";
     this.token = opts.token ?? "";
+    this.tokenProvider = opts.tokenProvider ?? null;
   }
 
   private readonly token: string;
+  private readonly tokenProvider: TokenProvider | null;
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  /** The credential actually in use — PAT, installation token, or undefined (anonymous). */
+  async currentToken(): Promise<string | undefined> {
+    return this.tokenProvider ? this.tokenProvider.get() : this.token || undefined;
+  }
+
+  private async request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
+    const token = this.tokenProvider ? await this.tokenProvider.get() : this.token;
     const res = await this.fetchImpl(`${this.apiBase}${path}`, {
       method,
       headers: {
         accept: "application/vnd.github+json",
         "x-github-api-version": "2022-11-28",
-        ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
+    if (res.status === 401 && retry && this.tokenProvider) {
+      // A cached installation token expired mid-cycle: drop it and try exactly once more.
+      this.tokenProvider.onAuthFailure();
+      return this.request<T>(method, path, body, false);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       // The three failures a fresh install hits; the raw body alone is cryptic (M5-5).

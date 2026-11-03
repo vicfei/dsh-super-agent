@@ -125,6 +125,12 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 - 没有任何 allowedList 评审的最新立场是 CHANGES_REQUESTED(一人否决,直到重审)
 - 合并请求锁定被审批的那个 SHA——头提交变了就下周期重评
 
+**GitHub App 认证(可选,推荐)。** 默认一切走个人令牌(`GITHUB_TOKEN`):回复以*你本人*身份发出,限额按用户算。改配 GitHub App 后,回复以 App 的 bot 身份发出(门禁本就把 bot 封顶在 inferred——bot 永远发不出 explicit 请求),限额按安装计,installation token 每小时轮换——环境里不再有长效密钥:
+
+1. 在 [github.com/settings/apps/new](https://github.com/settings/apps/new) 创建用户级 App——权限只需 **Issues: read & write、Pull requests: read & write、Contents: read & write、Metadata: read**;不需要 webhook/订阅(全部轮询)
+2. 安装到你的仓库,然后设环境变量:`GITHUB_APP_ID`、`GITHUB_APP_PRIVATE_KEY`(PEM 内容,`\n` 转义——或 `GITHUB_APP_PRIVATE_KEY_PATH` 指文件)、可选 `GITHUB_APP_INSTALLATION_ID`(省略时从 `--repo` 自动发现)
+3. 照常运行——启动会打一行 `auth: GitHub App …`。优先级:`--token` 参数 > App 环境变量 > `GITHUB_TOKEN`;分支推送走 https 时用同一凭证(ssh remote 继续用你的 ssh key)
+
 面板(`npm run panel`,仅本机)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志,以及接受模式切换(切 `auto` 会要求确认):
 
 ## 对比

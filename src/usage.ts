@@ -31,7 +31,8 @@ Common options:
   --no-panel                watch without the panel server
   --post                    poll also posts queued replies (needs a token)
 
-Environment: GITHUB_TOKEN, ASSESS_BASE_URL, ASSESS_MODEL, ASSESS_API_KEY, PANEL_PORT.
+Environment: GITHUB_TOKEN, or GitHub App auth (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY[_PATH],
+optional GITHUB_APP_INSTALLATION_ID), ASSESS_BASE_URL, ASSESS_MODEL, ASSESS_API_KEY, PANEL_PORT.
 Docs: https://github.com/vicfei/dsh-super-agent#quick-start`;
 
 const examplesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "examples");
@@ -49,7 +50,7 @@ export function scaffoldFromExample(target: string, example: string): boolean {
   return true;
 }
 
-export const NO_TOKEN_HINT = `[warn] GITHUB_TOKEN is not set — anonymous mode: public repos only, ~60 requests/hour,
-       replies & PRs stay queued in the local outbox until a token appears.
-       start with a read-only token: https://github.com/settings/personal-access-tokens/new
-       then: export GITHUB_TOKEN=github_pat_…`;
+export const NO_TOKEN_HINT = `[warn] no GitHub credential — anonymous mode: public repos only, ~60 requests/hour,
+       replies & PRs stay queued in the local outbox until a credential appears.
+       export GITHUB_TOKEN (a read-only PAT is enough to start:
+       https://github.com/settings/personal-access-tokens/new), or set up GitHub App auth — see README`;

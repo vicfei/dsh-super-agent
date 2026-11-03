@@ -125,7 +125,7 @@ describe("CLI merge command (M6-1)", () => {
   it("without a token: tells you exactly that, before touching any config", () => {
     const r = runMerge(["merge", "--repo", "a/b"], { GITHUB_TOKEN: "" });
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain("merge needs GITHUB_TOKEN");
+    expect(r.stderr).toContain("merge needs a credential");
     expect(existsSync(join(dir, "policy.json"))).toBe(false); // no scaffold side effect
   });
 });

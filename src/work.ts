@@ -26,6 +26,17 @@ function git(dir: string, args: string[]): Promise<string> {
   });
 }
 
+/**
+ * Git-over-https auth for the ticket-branch push (M6-2): installation tokens and PATs both
+ * authenticate as x-access-token. Scoped to https://github.com, so local file remotes (tests)
+ * and ssh remotes are untouched — those keep their ambient credentials.
+ */
+export function pushAuthArgs(token: string | undefined): string[] {
+  if (!token) return [];
+  const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+  return ["-c", `http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic}`];
+}
+
 export interface DeliveryOutcome {
   prUrl?: string;
   /** Set when a PR opened — enough for the engine to track it for the merge sweep. */
@@ -52,7 +63,7 @@ export async function deliverPullRequest(
     if (count === 0) return {}; // nothing to deliver
     const branch = `dsh/ticket-${ticket.id}`;
     const headSha = await git(result.worktree, ["rev-parse", "HEAD"]);
-    await git(result.worktree, ["push", "origin", `HEAD:refs/heads/${branch}`]);
+    await git(result.worktree, [...pushAuthArgs(await client.currentToken()), "push", "origin", `HEAD:refs/heads/${branch}`]);
     const base = await client.getDefaultBranch(repo);
     const firstLine = trigger.body.trim().split("\n")[0].slice(0, 72) || "ticket work";
     const pr = await client.createPullRequest(repo, {

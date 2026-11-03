@@ -202,6 +202,25 @@ describe("subscription bypass (v0.7-1)", () => {
     expect(engine.claimQueued(5)).toHaveLength(0);
   });
 
+  it("over-budget follow-ups spill in full with inline pointers; under-budget stays inline (v0.9.x)", () => {
+    engine.ingest([item({ body: "fix the login bug" })]);
+    const long = "x".repeat(9_000); // alone exceeds the 8k inline budget
+    engine.ingest([item({ id: "github:issue_comment:60", scope: "issue_comment", body: long })]);
+    const claimed = engine.claimQueued(5);
+    expect(claimed).toHaveLength(1);
+    const c = claimed[0];
+    expect(c.body).toContain("fix the login bug");
+    expect(c.body).toContain("[spilled → .dsh/spill/1.md]");
+    expect(c.body).not.toContain("x".repeat(400)); // full text is NOT inline
+    expect(c.spills).toEqual([{ file: ".dsh/spill/1.md", content: long }]);
+    // a short follow-up on a fresh ticket stays fully inline — no spill rows
+    engine.ingest([item({ id: "github:issue:70", threadId: "github:o/r/issues/6", body: "small task" })]);
+    engine.ingest([item({ id: "github:issue_comment:71", scope: "issue_comment", threadId: "github:o/r/issues/6", body: "small addendum" })]);
+    const second = engine.claimQueued(5).find((x) => x.threadId.includes("issues/6"))!;
+    expect(second.body).toContain("small addendum");
+    expect(second.spills).toEqual([]);
+  });
+
   it("a different opener on the same thread is not bypassed — their message is their own business", () => {
     engine.ingest([item()]); // alice's open ticket
     const r = engine.ingest([item({ id: "github:issue_comment:54", author: { login: "bob", isBot: false }, scope: "issue_comment", body: "mine" })]);

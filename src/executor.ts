@@ -147,6 +147,11 @@ function sh(cmd: string, opts: { cwd?: string; timeoutMs: number; env?: NodeJS.P
 }
 
 export class Executor {
+  /** Deterministic worktree path for a ticket — spill files land here before the run. */
+  worktreeOf(ticketId: number): string {
+    return resolve(join(this.cfg.workRoot, `ticket-${ticketId}`));
+  }
+
   constructor(readonly cfg: ExecutorConfig) {
     // Loud, early: a missing wrapper or a secret-looking passEnv must never be a silent fallback.
     assertSandboxAvailable(cfg.sandbox ?? { enabled: false });

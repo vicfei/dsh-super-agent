@@ -93,6 +93,13 @@ CREATE TABLE IF NOT EXISTS ticket_followup (
   UNIQUE(ticket_id, trigger_id)
 );
 CREATE INDEX IF NOT EXISTS idx_followup_ticket ON ticket_followup(ticket_id);
+
+CREATE TABLE IF NOT EXISTS spill (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id INTEGER NOT NULL REFERENCES ticket(id),
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 `;
 
 export interface IngestItem {
@@ -137,6 +144,12 @@ export interface EffectRow {
   attempts: number;
 }
 
+/** Spilled context: the full text behind a `.dsh/spill/<id>.md` pointer (v0.9.x). */
+export interface SpillFile {
+  file: string;
+  content: string;
+}
+
 /** A PR the agent opened for a ticket — the auto-merge sweep's work list (M6-1). */
 export interface DeliveryView {
   id: number;
@@ -168,6 +181,8 @@ export interface DecisionView {
 }
 
 const MAX_EFFECT_ATTEMPTS = 5;
+const INLINE_BUDGET = 8_000; // chars of accumulated context kept inline (v0.9.x Inline & Spill)
+const SPILL_PREVIEW = 300; // chars kept inline per spilled follow-up
 const BACKOFF_BASE_MS = 5_000;
 const BACKOFF_CAP_MS = 300_000;
 
@@ -385,7 +400,7 @@ export class Engine {
   /** Open tickets claimable by work: never assigned, or last assignment ended cleanly
    * (a resumed ticket is re-claimable; a failed one waits for a person). The body is the
    * accumulated context: original request + subscription-bypass follow-ups in order. */
-  claimQueued(limit: number): { id: number; threadId: string; body: string; author: string }[] {
+  claimQueued(limit: number): { id: number; threadId: string; body: string; author: string; spills: SpillFile[] }[] {
     const rows = this.db.prepare(`
       SELECT t.id, t.thread_id, tr.body, tr.author_login
       FROM ticket t JOIN trigger tr ON tr.id = t.trigger_id
@@ -396,16 +411,30 @@ export class Engine {
     const followupsOf = this.db.prepare(`
       SELECT tr.body, tr.author_login, f.ts FROM ticket_followup f
       JOIN trigger tr ON tr.id = f.trigger_id WHERE f.ticket_id = ? ORDER BY f.id`);
+    const insertSpill = this.db.prepare("INSERT INTO spill (ticket_id, content, created_at) VALUES (?, ?, ?)");
     return rows.map((r) => {
       const id = Number(r.id);
-      const extra = (followupsOf.all(id) as Record<string, unknown>[]).map(
-        (f) => `--- follow-up ${String(f.ts)} by @${String(f.author_login)} ---\n${String(f.body).slice(0, 2000)}`,
-      );
-      return {
-        id, threadId: String(r.thread_id),
-        body: [String(r.body), ...extra].join("\n\n").slice(0, 12_000),
-        author: String(r.author_login),
-      };
+      const original = String(r.body);
+      const parts: string[] = [original];
+      const spills: SpillFile[] = [];
+      let budget = INLINE_BUDGET - original.length;
+      for (const f of followupsOf.all(id) as Record<string, unknown>[]) {
+        const header = `--- follow-up ${String(f.ts)} by @${String(f.author_login)} ---`;
+        const full = String(f.body);
+        const part = `${header}\n${full}`;
+        if (part.length <= budget) {
+          parts.push(part);
+          budget -= part.length;
+          continue;
+        }
+        // over budget: spill the full text, keep a preview + pointer inline (chain of recall)
+        const info = insertSpill.run(id, full, new Date().toISOString());
+        const file = `.dsh/spill/${Number(info.lastInsertRowid)}.md`;
+        spills.push({ file, content: full });
+        parts.push(`${header}\n${full.slice(0, SPILL_PREVIEW)}\n[spilled → ${file}]`);
+        budget = 0;
+      }
+      return { id, threadId: String(r.thread_id), body: parts.join("\n\n"), author: String(r.author_login), spills };
     });
   }
 

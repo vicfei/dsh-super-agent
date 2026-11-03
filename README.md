@@ -75,7 +75,8 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | Auto-merge — delivery requirements: own PR, allowed-list approval covering head, ±line cap; any CHANGES_REQUESTED vetoes | ✅ v0.6 |
 | Subscription bypass — an open ticket absorbs the opener's follow-ups as context; resume carries the resuming message to the worker | ✅ v0.7 |
 | GitHub App auth — hourly installation tokens, bot identity; person-stages panel | ✅ v0.6 |
-| Feishu / Slack sources, speculative execution, Watchdog | later — see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Feishu / Slack / WeChat channels — same admission table, same loop (`im_dm` / `im_group`) | ✅ v0.8 |
+| Speculative execution, Watchdog, executor sandboxing | v0.9 — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## Quick start
 

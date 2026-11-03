@@ -85,6 +85,9 @@ export interface MergePolicy {
   method: "squash" | "merge" | "rebase";
   /** Delete the `dsh/ticket-N` branch after a successful merge. */
   deleteBranch: boolean;
+  /** v0.7-2: hold while the head commit has no CI, failing CI, or CI still running. Default off —
+   * a repo without checks would otherwise never merge. */
+  requireCi: boolean;
 }
 
 export function defaultMergePolicy(): MergePolicy {
@@ -94,6 +97,7 @@ export function defaultMergePolicy(): MergePolicy {
     maxChangedLines: 200,
     method: "squash",
     deleteBranch: true,
+    requireCi: false,
   };
 }
 

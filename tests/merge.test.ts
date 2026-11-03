@@ -122,6 +122,39 @@ describe("evaluateMerge (structural brakes, fail-closed)", () => {
   });
 });
 
+describe("evaluateMerge CI brake (v0.7-2)", () => {
+  const approved = [review("alice", "APPROVED", HEAD)];
+  const on = { ...mp, requireCi: true };
+
+  it("green head passes", () => {
+    expect(evaluateMerge(pr(), approved, on, allowed, { total: 2, failures: 0, pending: 0 }).ok).toBe(true);
+  });
+
+  it("no CI on head holds with a reason", () => {
+    const c = evaluateMerge(pr(), approved, on, allowed, { total: 0, failures: 0, pending: 0 });
+    expect(c.ok).toBe(false);
+    expect(c.reasons.join(" ")).toContain("no CI reported");
+  });
+
+  it("failing checks hold; running checks hold", () => {
+    expect(evaluateMerge(pr(), approved, on, allowed, { total: 2, failures: 1, pending: 0 }).reasons.join(" ")).toContain("CI failing");
+    expect(evaluateMerge(pr(), approved, on, allowed, { total: 2, failures: 0, pending: 1 }).reasons.join(" ")).toContain("CI still running");
+  });
+
+  it("neutral/skipped-only checks count as pass", () => {
+    // neutral+skipped are neither failure-conclusions nor unfinished
+    expect(evaluateMerge(pr(), approved, on, allowed, { total: 2, failures: 0, pending: 0 }).ok).toBe(true);
+  });
+
+  it("CI state missing (fetch failed upstream) holds fail-closed", () => {
+    expect(evaluateMerge(pr(), approved, on, allowed, undefined).reasons).toContain("CI state unavailable");
+  });
+
+  it("requireCi off (default) ignores a red head", () => {
+    expect(evaluateMerge(pr(), approved, mp, allowed, { total: 1, failures: 1, pending: 0 }).ok).toBe(true);
+  });
+});
+
 // ── engine delivery lifecycle ──────────────────────────────────────────────────
 
 let dir: string;
@@ -179,6 +212,15 @@ interface MockWorld {
   branchesDeleted: string[];
   posted: string[];
   errors: { match: string; status: number } | null;
+  ci: { total: number; failures: number; pending: number };
+}
+
+function ciRuns(ci: { total: number; failures: number; pending: number }): { status: string; conclusion: string | null }[] {
+  const runs: { status: string; conclusion: string | null }[] = [];
+  for (let i = 0; i < ci.failures; i++) runs.push({ status: "completed", conclusion: "failure" });
+  for (let i = 0; i < ci.pending; i++) runs.push({ status: "in_progress", conclusion: null });
+  while (runs.length < ci.total) runs.push({ status: "completed", conclusion: "success" });
+  return runs;
 }
 
 function mockClient(w: MockWorld): GitHubClient {
@@ -187,6 +229,9 @@ function mockClient(w: MockWorld): GitHubClient {
     const method = init?.method ?? "GET";
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
     if (w.errors && u.includes(w.errors.match)) return json({ message: "boom" }, w.errors.status);
+    if (/\/repos\/o\/r\/commits\/[0-9a-f]+\/check-runs$/.test(u) && method === "GET") {
+      return json({ total_count: w.ci.total, check_runs: ciRuns(w.ci) });
+    }
     if (u.endsWith("/repos/o/r/pulls/42") && method === "GET") return json(w.pull);
     if (u.endsWith("/repos/o/r/pulls/42/reviews") && method === "GET") return json(w.reviews);
     if (u.endsWith("/repos/o/r/pulls/42/merge") && method === "PUT") {
@@ -210,7 +255,8 @@ function mockClient(w: MockWorld): GitHubClient {
 function world(over: Partial<MockWorld> = {}): MockWorld {
   return {
     pull: pr(), reviews: [review("alice", "APPROVED", HEAD)], mergeDeclines: false,
-    mergedBodies: [], branchesDeleted: [], posted: [], errors: null, ...over,
+    mergedBodies: [], branchesDeleted: [], posted: [], errors: null,
+    ci: { total: 1, failures: 0, pending: 0 }, ...over,
   };
 }
 
@@ -287,5 +333,20 @@ describe("runMergeSweep", () => {
     const lines = await runMergeSweep(engine, mockClient(w), "o/r", policy);
     expect(lines[0]).toMatchObject({ action: "waiting" });
     expect(lines[0].reasons!.join(" ")).toContain("500");
+  });
+
+  it("requireCi: holds while checks run, merges when green (v0.7-2 end-to-end)", async () => {
+    engine.recordDelivery(delivery);
+    const policyCi = { ...policy, merge: { enabled: true, requireCi: true } };
+    const w = world({ ci: { total: 1, failures: 0, pending: 1 } });
+    const lines = await runMergeSweep(engine, mockClient(w), "o/r", policyCi);
+    expect(lines[0]).toMatchObject({ action: "waiting" });
+    expect(lines[0].reasons!.join(" ")).toContain("CI still running");
+    expect(engine.openDeliveries("o/r")).toHaveLength(1);
+
+    w.ci = { total: 1, failures: 0, pending: 0 };
+    const again = await runMergeSweep(engine, mockClient(w), "o/r", policyCi);
+    expect(again[0]).toMatchObject({ action: "merged" });
+    expect(w.mergedBodies).toEqual([{ sha: HEAD, merge_method: "squash" }]);
   });
 });

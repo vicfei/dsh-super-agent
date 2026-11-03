@@ -24,13 +24,26 @@ function isBotReview(r: GhReview): boolean {
   return !r.user || r.user.type === "Bot" || r.user.login.endsWith("[bot]");
 }
 
+/** Aggregated CI state for the head commit, fetched by the sweep (evaluateMerge stays pure). */
+export interface CiState {
+  total: number;
+  failures: number;
+  pending: number;
+}
+
 /**
  * Pure evaluation (unit-tested like the gate): would this PR merge under this policy?
- * Structural first (draft / conflict / branch / size), then review stances — a reviewer's
+ * Structural first (draft / conflict / branch / size / CI), then review stances — a reviewer's
  * latest APPROVED | CHANGES_REQUESTED | DISMISSED review is their effective stance
  * (COMMENTED/PENDING don't move it; a dismissal clears it).
  */
-export function evaluateMerge(pr: GhPullDetail, reviews: GhReview[], policy: MergePolicy, allowedList: string[]): MergeCheck {
+export function evaluateMerge(
+  pr: GhPullDetail,
+  reviews: GhReview[],
+  policy: MergePolicy,
+  allowedList: string[],
+  ci?: CiState,
+): MergeCheck {
   const reasons: string[] = [];
   const changedLines = pr.additions + pr.deletions;
   let approvedBy: string | undefined;
@@ -41,6 +54,12 @@ export function evaluateMerge(pr: GhPullDetail, reviews: GhReview[], policy: Mer
   else if (pr.mergeable === null) reasons.push("mergeability not computed yet");
   if (!TICKET_BRANCH.test(pr.head.ref)) reasons.push(`not a ticket branch: ${pr.head.ref}`);
   if (changedLines > policy.maxChangedLines) reasons.push(`±${changedLines} lines > cap ${policy.maxChangedLines}`);
+  if (policy.requireCi) {
+    if (!ci) reasons.push("CI state unavailable");
+    else if (ci.total === 0) reasons.push(`no CI reported on head ${pr.head.sha.slice(0, 7)}`);
+    else if (ci.failures > 0) reasons.push(`CI failing on head (${ci.failures} check${ci.failures === 1 ? "" : "s"})`);
+    else if (ci.pending > 0) reasons.push(`CI still running (${ci.pending} check${ci.pending === 1 ? "" : "s"})`);
+  }
 
   if (reasons.length === 0) {
     const allowed = new Set(allowedList.map((s) => s.toLowerCase()));
@@ -113,7 +132,8 @@ export async function runMergeSweep(
       }
 
       const reviews = await client.listReviews(repo, d.prNumber);
-      const check = evaluateMerge(pr, reviews, merge, policy.allowedList);
+      const ci = merge.requireCi ? await client.listCheckRuns(repo, pr.head.sha) : undefined;
+      const check = evaluateMerge(pr, reviews, merge, policy.allowedList, ci);
       if (!check.ok) {
         out.push({ pr: d.prNumber, action: "waiting", reasons: check.reasons });
         log(`#${d.prNumber} holds: ${check.reasons.join("; ")}`);

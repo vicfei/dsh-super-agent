@@ -125,6 +125,7 @@ Auto-merge (default **off**) closes the loop with structural brakes — every co
 - additions + deletions ≤ `maxChangedLines` (default 200)
 - no allowed-list reviewer's latest stance is CHANGES_REQUESTED (a one-person veto until re-reviewed)
 - the merge PUT is pinned to the approved SHA — if the head moved, it re-evaluates next cycle
+- with `policy.merge.requireCi` (default off): the head commit must have CI and all of it green — failing or still-running checks hold the merge
 
 > **Sole operators, note:** the approval bullet is why delivery should run under GitHub App auth (next section). With a personal token the agent's PRs are authored by *you* — and GitHub never lets you approve your own PR, so the merge gate can never be satisfied. Team setups can approve each other; a single operator needs the bot identity.
 

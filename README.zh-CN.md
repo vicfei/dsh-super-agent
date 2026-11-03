@@ -125,6 +125,7 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 - additions + deletions ≤ `maxChangedLines`(默认 200)
 - 没有任何 allowedList 评审的最新立场是 CHANGES_REQUESTED(一人否决,直到重审)
 - 合并请求锁定被审批的那个 SHA——头提交变了就下周期重评
+- 开启 `policy.merge.requireCi`(默认关)后:头提交必须有 CI 且全绿——失败或还在跑都按住不合并
 
 > **单人运营者注意:**"审批"那一条正是交付要走 GitHub App 认证(下一节)的原因。用个人令牌时,agent 的 PR 作者*是你本人*——而 GitHub 永远不允许你批准自己的 PR,合并门槛就永远凑不齐。团队可以互批;单人必须靠 bot 身份。
 

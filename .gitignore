@@ -3,3 +3,4 @@ dist/
 *.log
 .env
 .state/
+wechat-login-qr.png

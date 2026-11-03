@@ -35,7 +35,7 @@ Common options:
 Environment: GITHUB_TOKEN, or GitHub App auth (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY[_PATH],
 optional GITHUB_APP_INSTALLATION_ID); Feishu channel (FEISHU_APP_ID + FEISHU_APP_SECRET,
 optional FEISHU_BOT_OPEN_ID); Slack channel (SLACK_BOT_TOKEN + SLACK_APP_TOKEN);
-ASSESS_BASE_URL, ASSESS_MODEL, ASSESS_API_KEY, PANEL_PORT.
+Telegram channel (TELEGRAM_BOT_TOKEN); ASSESS_BASE_URL, ASSESS_MODEL, ASSESS_API_KEY, PANEL_PORT.
 Docs: https://github.com/vicfei/dsh-super-agent#quick-start`;
 
 const examplesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "examples");

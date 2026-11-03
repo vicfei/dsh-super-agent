@@ -12,7 +12,7 @@ export interface Actor {
 export interface Trigger {
   /** Source-scoped unique id; accepting twice yields one Ticket. */
   id: string;
-  source: "github" | "feishu" | "slack" | "wechat";
+  source: "github" | "feishu" | "slack" | "wechat" | "telegram";
   /** Receiving scope — the admission table's row key. */
   scope: Scope;
   /** Triggers of one conversation, as defined by the Source (e.g. `github:owner/repo/issues/42`). */

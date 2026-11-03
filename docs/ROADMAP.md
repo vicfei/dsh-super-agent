@@ -67,10 +67,24 @@ merge conditions are checkable facts, not model judgment.
 - [x] Telegram (v0.8.1): official Bot API — @BotFather token, getMe bot-username discovery,
       getUpdates offset long-poll (self-aborting), sendMessage replies
 
+## Milestone 9 — autonomy hygiene (done, v0.9.0)
+
+- [x] Watchdog (v0.9-1): the outside control loop — stuck-work nudge + needs-person reminder,
+      one each, idempotent; optional fail-closed LLM consult can skip a nudge on real progress;
+      never touches admission, never kills runs; read-only `health` CLI
+- [x] Executor sandbox (v0.9-2): bwrap/sandbox-exec — ro root, rw worktree only, network denied,
+      env allowlist (DSH_* + passEnv; ambient secrets never reach the worker); missing wrapper
+      = hard error. Two live findings documented: --unshare-net must be explicit; /tmp tmpfs
+      must precede the worktree bind
+- [x] Trigger batching (v0.9-3): one Slow-Path call per thread (subscription bypass coalesces
+      the burst); Fast Path / Slow Path vocabulary aligned with the article in docs
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)
-- Batching Router, chain-of-recall context, speculative execution, Watchdog
+- Chain-of-recall context (Inline & Spill) — 0.9.x
+- Speculative execution with a deliver gate
+- WeChat polish: scanner ilink_user_id auto-registry, typing heartbeat
 
 ## Non-goals (v0)
 

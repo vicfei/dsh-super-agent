@@ -1,7 +1,7 @@
 {
   "name": "@vicfei/dsh-super-agent",
-  "version": "0.8.1",
-  "description": "Admission control, observe mode & tickets for any CLI coding agent — independent implementation of the DeepSeek Super-agent design",
+  "version": "0.9.0",
+  "description": "Admission control, observe mode & tickets for any CLI coding agent \u2014 independent implementation of the DeepSeek Super-agent design",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vicfei/dsh-super-agent.git"

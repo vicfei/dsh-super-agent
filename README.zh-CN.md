@@ -77,7 +77,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | GitHub App 认证——installation token 每小时轮换、bot 身份;按人分阶段面板 | ✅ v0.6 |
 | 飞书 / Slack / 微信 / Telegram 通道——同一张准许表,同一回路(`im_dm` / `im_group`) | ✅ v0.8 |
 | Watchdog——滞留工作问询 + needs-person 提醒,各一次,永不碰准入 | ✅ v0.9 |
-| 投机执行、执行器沙箱、批处理 | v0.9——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
+| 投机执行、链式召回(Inline & Spill) | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## 快速开始
 

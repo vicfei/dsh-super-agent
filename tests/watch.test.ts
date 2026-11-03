@@ -109,6 +109,28 @@ describe("runWatch", () => {
     expect(assignments.c).toBe(1);
   });
 
+  it("same-thread burst costs one Slow-Path call (v0.9-3 batching); threads are independent", async () => {
+    // three inferred triggers on one thread + one on another (allowed alice, not addressing)
+    const burst = [1, 2, 3].map((n) => ({
+      ...trigger, id: `github:issue_comment:${n}`, addressing: false,
+      body: `note ${n}`,
+    }));
+    const other = { ...trigger, id: "github:issue_comment:9", addressing: false, threadId: "github:o/r/issues/6", body: "other" };
+    let calls = 0;
+    const one = async () => new Promise<typeof burst>(async (r) => {
+      await new Promise((x) => setTimeout(x, 5));
+      r([...burst, other]);
+    });
+    const fakeBurstSource = { kind: "github", collect: async () => ({ triggers: await one(), next: { positions: {} } }) } as never;
+    await runWatch({
+      engine, sources: [fakeBurstSource], executor: echoExecutor(),
+      client: null, channels: [], repo: "o/r", policy,
+      assessment: async () => { calls++; return "positive"; },
+      intervalMs: 5, cycles: 1, log: () => {},
+    });
+    expect(calls).toBe(2); // one per thread — not one per trigger
+  });
+
   it("auto-merge sweep runs in-cycle when policy.merge.enabled (M6-1)", async () => {
     const head = "a".repeat(40);
     engine.recordDelivery({ repo: "o/r", prNumber: 42, ticketId: 1, threadId: "github:o/r/issues/5", branch: "dsh/ticket-1", headSha: head });

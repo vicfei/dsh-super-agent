@@ -8,6 +8,7 @@ import type { Engine } from "./engine.js";
 import type { ReplyChannel, Source, SourceState } from "./source.js";
 import type { Executor } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
+import { evaluateGate } from "./gate.js";
 import { runMergeSweep } from "./merge.js";
 import { runWatchdogSweep } from "./watchdog.js";
 import { classify, formatOutcome } from "./runner.js";
@@ -62,10 +63,23 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
 
   const batch = [];
   const nextBySource: Record<string, SourceState> = {};
+  // Trigger batching (v0.9-3, issue #62): same-thread follow-ups bypass into one ticket, so the
+  // Slow Path runs once per thread — on the first inferred trigger — and later inferred triggers
+  // of that thread reuse the verdict. Explicit triggers never consult the Slow Path (docs/002).
+  const verdictByThread = new Map<string, "positive" | "negative">();
+  const assess = async (t: Trigger): Promise<"positive" | "negative"> => {
+    const gate = evaluateGate(policy, t);
+    if (gate.strength !== "inferred") return "positive";
+    const cached = verdictByThread.get(t.threadId);
+    if (cached) return cached;
+    const verdict = await opts.assessment(t);
+    verdictByThread.set(t.threadId, verdict);
+    return verdict;
+  };
   for (const source of opts.sources) {
     const { triggers, next } = await source.collect(engine.sourceState(source.kind), { exclude: engine.selfPosted() });
     nextBySource[source.kind] = next;
-    for (const t of triggers) batch.push(classify(t, policy, await opts.assessment(t)));
+    for (const t of triggers) batch.push(classify(t, policy, await assess(t)));
   }
   for (const outcome of batch) log(formatOutcome(outcome));
   const report = engine.ingest(batch, nextBySource);

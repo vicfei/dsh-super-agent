@@ -50,6 +50,9 @@
 <h2>Awaiting a human</h2>
 <div id="awaiting"></div>
 
+<h2>Pull requests</h2>
+<div id="deliveries"></div>
+
 <h2>Observe records — would accept</h2>
 <div id="shadows"></div>
 
@@ -88,6 +91,18 @@ async function render() {
           <button class="stop" onclick="stopTicket(${t.id})">stop</button></div>`).join('')
         + revoked.map(t => `<div class="card"><span class="badge b-ignore">revoked</span>
           ticket #${t.id} — ${esc(t.revokedReason)}</div>`).join('');
+
+  const deliveries = s.deliveries || [];
+  const mergeOn = !!(s.policy && s.policy.merge && s.policy.merge.enabled);
+  document.getElementById('deliveries').innerHTML = deliveries.length === 0
+    ? '<div class="quiet">no pull requests opened</div>'
+    : deliveries.map(d => {
+        const cls = d.state === 'merged' ? 'b-accept' : d.state === 'closed' ? 'b-ignore' : 'b-shadow';
+        const note = d.state === 'open' ? (mergeOn ? 'awaiting merge requirements' : 'auto-merge off (policy.merge)') : '';
+        return `<div class="card"><span class="badge ${cls}">${d.state}</span>
+          PR #${esc(d.prNumber)} ${esc(d.branch)} · ticket #${d.ticketId}
+          <span class="quiet">${esc(note)}</span></div>`;
+      }).join('');
 
   const shadows = s.decisions.filter(d => d.wouldAccept);
   document.getElementById('shadows').innerHTML = shadows.length === 0

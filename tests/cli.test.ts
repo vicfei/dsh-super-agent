@@ -29,7 +29,7 @@ describe("CLI --help / --version", () => {
   it("prints usage and exits 0", () => {
     const r = runCli(["--help"], dir);
     expect(r.status).toBe(0);
-    for (const cmd of ["poll", "work", "watch", "tickets", "panel", "help"]) {
+    for (const cmd of ["poll", "work", "watch", "tickets", "panel", "merge", "help"]) {
       expect(r.stdout).toContain(cmd);
     }
     expect(r.stdout).toContain("GITHUB_TOKEN");
@@ -107,5 +107,25 @@ describe("CLI config bootstrap", () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("cannot read policy config");
     expect(readFileSync(target, "utf8")).toBe(broken);
+  });
+});
+
+describe("CLI merge command (M6-1)", () => {
+  function runMerge(args: string[], env: NodeJS.ProcessEnv = {}) {
+    return spawnSync(tsx, [cli, ...args], { cwd: dir, encoding: "utf8", env: { ...process.env, ...env } });
+  }
+
+  it("without --repo: friendly error pointing at --help", () => {
+    const r = runMerge(["merge"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("--repo");
+    expect(r.stderr).toContain("--help");
+  });
+
+  it("without a token: tells you exactly that, before touching any config", () => {
+    const r = runMerge(["merge", "--repo", "a/b"], { GITHUB_TOKEN: "" });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("merge needs GITHUB_TOKEN");
+    expect(existsSync(join(dir, "policy.json"))).toBe(false); // no scaffold side effect
   });
 });

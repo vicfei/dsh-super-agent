@@ -72,7 +72,9 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | LLM assessment layer — any OpenAI-compatible endpoint, fail-closed, inferred-only | ✅ v0.3.0 |
 | Panel — one page of what awaits a human, observe records, mode switch | ✅ v0.4.0 |
 | PR delivery — worker commits become a branch + pull request, linked in the report | ✅ v0.5.0 |
-| Feishu / Slack sources, auto-merge, speculative execution, Watchdog | roadmap — see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Auto-merge — delivery requirements: own PR, allowed-list approval covering head, ±line cap; any CHANGES_REQUESTED vetoes | ✅ v0.6 |
+| GitHub App auth, person-stages panel | M6 — see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Feishu / Slack sources, speculative execution, Watchdog | later — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## Quick start
 
@@ -114,6 +116,14 @@ npm run watch -- --repo you/your-repo --agent-login your-login --executor-config
 ```
 
 `claude`, `codex`, `opencode`, `aider` or any shell command works as the worker; 30-minute background cap (timeout kills the whole process group), worker slots, blocked-by-name commands, reports posted back into the thread. Wire a real assessment model with `--assessment llm` (+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`): called only for inferred candidates, explicit never waits, errors fail closed to negative.
+
+Auto-merge (default **off**) closes the loop with structural brakes — every condition is a checkable fact, never model judgment. Set `"merge": { "enabled": true, … }` in `policy.json` and the watch cycle (or a one-shot `npm run merge -- --repo you/your-repo`) merges a ticket PR only when **all** hold:
+
+- the PR is one the agent opened (`dsh/ticket-N` branch)
+- an **allowed-list, non-bot** reviewer approved at exactly the head SHA — stale approvals never merge
+- additions + deletions ≤ `maxChangedLines` (default 200)
+- no allowed-list reviewer's latest stance is CHANGES_REQUESTED (a one-person veto until re-reviewed)
+- the merge PUT is pinned to the approved SHA — if the head moved, it re-evaluates next cycle
 
 And the panel (`npm run panel`, localhost) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, and the accept-mode switch (switching to `auto` asks you to confirm):
 

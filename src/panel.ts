@@ -12,6 +12,7 @@ export interface PanelState {
   policy: ReturnType<Engine["policy"]>;
   tickets: ReturnType<Engine["tickets"]>;
   decisions: ReturnType<Engine["decisions"]>;
+  deliveries: ReturnType<Engine["deliveries"]>;
 }
 
 export function startPanel(engine: Engine, port: number, host = "127.0.0.1"): Promise<Server> {
@@ -31,6 +32,7 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1"): Pr
         policy: engine.policy(),
         tickets: engine.tickets(),
         decisions: engine.decisions(50),
+        deliveries: engine.deliveries(30),
       };
       send(200, "application/json", JSON.stringify(state));
       return;

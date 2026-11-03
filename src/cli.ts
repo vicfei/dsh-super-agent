@@ -15,6 +15,7 @@ import { GitHubClient } from "./github/client.js";
 import { GitHubSource } from "./github/source.js";
 import { Executor, type ExecutorConfig } from "./executor.js";
 import { runWork } from "./work.js";
+import { mergePolicyOf } from "./domain.js";
 import { NO_TOKEN_HINT, scaffoldFromExample, USAGE } from "./usage.js";
 
 function die(msg: string): never {
@@ -58,7 +59,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -70,9 +71,7 @@ if (!(COMMANDS as readonly string[]).includes(command)) {
 
 const engine = new Engine(args.db);
 
-function loadPolicy(): Policy {
-  if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
-  if (!args["agent-login"]) die(`--agent-login <login> is required (mention detection)${WITH_HELP}`);
+function readPolicyConfig(): Policy {
   if (!existsSync(args.config) && scaffoldFromExample(args.config, "policy.json")) {
     console.log(`[bootstrap] created ${args.config} from examples/policy.json`);
     console.log("[bootstrap] put your GitHub login in allowedList, then rerun the same command");
@@ -84,6 +83,12 @@ function loadPolicy(): Policy {
   } catch (e) {
     die(`cannot read policy config ${args.config}: ${e instanceof Error ? e.message : e}`);
   }
+}
+
+function loadPolicy(): Policy {
+  if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
+  if (!args["agent-login"]) die(`--agent-login <login> is required (mention detection)${WITH_HELP}`);
+  return readPolicyConfig();
 }
 
 function loadExecutorConfig(): ExecutorConfig {
@@ -214,6 +219,22 @@ try {
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
     await new Promise<never>(() => {}); // serve until signal — the finally-close must not run
+  } else if (command === "merge") {
+    // One-shot version of the watch cycle's auto-merge sweep (cron-friendly).
+    if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
+    if (!token) die(`merge needs GITHUB_TOKEN to read reviews and merge${WITH_HELP}`);
+    const policy = readPolicyConfig();
+    engine.setPolicyIfChanged(policy);
+    const { runMergeSweep } = await import("./merge.js");
+    const lines = await runMergeSweep(engine, client, args.repo!, policy);
+    if (lines.length === 0) {
+      console.log(mergePolicyOf(policy).enabled
+        ? "no open deliveries — nothing to sweep"
+        : "auto-merge is off — set policy.merge.enabled = true (structural brakes apply)");
+    }
+    for (const l of lines) {
+      console.log(l.reasons ? `#${l.pr} [${l.action}] ${l.reasons.join("; ")}` : `#${l.pr} [${l.action}]`);
+    }
   }
 } finally {
   engine.close();

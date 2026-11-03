@@ -151,6 +151,10 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 - [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)(MIT)——其 000–008 文档即本项目遵循的规格;准许表语义、观察模式与工单阶段改编自其 docs 002 与 003,致谢。
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)(MIT)——官方原型的运行底座;本项目刻意不依赖它。
 
+## 常见问题
+
+**“任意 CLI 执行器”相比官方 DSH-only 原型如何权衡？** 本仓库在这一维度上更宽——执行器只是一个子进程边界（prompt 文件 + 环境变量 + 退出码），`claude`、`codex`、`aider`、`opencode`、DSH profile 或任何 shell 命令都能当 worker。官方原型用这份宽度换取更深的 DSH session 集成（会话生命周期、会话内交互）。在本仓库，人的介入发生在工单层（needs-person、stop）——从不在 worker 会话内部。
+
 ## 参与贡献
 
 英文 issue 优先、测试全绿——完整流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。

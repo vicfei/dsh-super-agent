@@ -158,6 +158,10 @@ The distinction is levels: inside the DSH plugin ecosystem, 25+ plugins guard in
 - [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype) (MIT) — docs 000–008 are the specification this project follows; the admission-table semantics, observe mode and ticket stages are adapted from docs 002 and 003 with gratitude.
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) — the runtime the official prototype runs on; this project deliberately does not require it.
 
+## FAQ
+
+**How does "any CLI executor" compare to the official DSH-only prototype?** This repo is broader on that axis — the executor is a subprocess boundary (prompt file + env + exit code), so `claude`, `codex`, `aider`, `opencode`, a DSH profile, or any shell command works as the worker. The official prototype trades that breadth for deeper DSH-session integration (session lifecycle, interaction within a session). Here, human interjection happens at the ticket level (needs-person, stop) — never inside the worker's session.
+
 ## Contributing
 
 Issue-first, English, tests green — the full walkthrough is in [CONTRIBUTING.md](CONTRIBUTING.md).

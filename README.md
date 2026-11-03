@@ -125,7 +125,9 @@ Auto-merge (default **off**) closes the loop with structural brakes — every co
 - no allowed-list reviewer's latest stance is CHANGES_REQUESTED (a one-person veto until re-reviewed)
 - the merge PUT is pinned to the approved SHA — if the head moved, it re-evaluates next cycle
 
-**GitHub App auth (optional, recommended).** By default everything rides a personal token (`GITHUB_TOKEN`): replies post as *you*, and rate limits are per-user. Configure a GitHub App instead and replies post as the App's bot identity (the gate already caps bots at inferred — they can never issue explicit requests), limits are per-installation, and installation tokens rotate hourly — no long-lived secret in the environment:
+> **Sole operators, note:** the approval bullet is why delivery should run under GitHub App auth (next section). With a personal token the agent's PRs are authored by *you* — and GitHub never lets you approve your own PR, so the merge gate can never be satisfied. Team setups can approve each other; a single operator needs the bot identity.
+
+**GitHub App auth (required for auto-merge when you operate alone).** By default everything rides a personal token (`GITHUB_TOKEN`): replies post as *you*, and rate limits are per-user. Configure a GitHub App instead and the agent acts as its own principal: PRs and replies carry the App's bot identity (the gate already caps bots at inferred — they can never issue explicit requests), so you become the legitimate approver; limits are per-installation, and installation tokens rotate hourly — no long-lived secret in the environment:
 
 1. Create a user-owned App at [github.com/settings/apps/new](https://github.com/settings/apps/new) — permissions: **Issues: read & write, Pull requests: read & write, Contents: read & write, Metadata: read**; no webhook/subscription needed (everything is polled)
 2. Install it on your repo, then set the environment: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (the PEM, `\n`-escaped — or `GITHUB_APP_PRIVATE_KEY_PATH`), optionally `GITHUB_APP_INSTALLATION_ID` (auto-discovered from `--repo` when omitted)

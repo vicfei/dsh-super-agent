@@ -354,7 +354,9 @@ export class WechatReplyChannel implements ReplyChannel {
       item_list: [{ type: 1, text_item: { text: body } }],
       context_token: route.contextToken, // "回复时必须原样回传" — routes the reply
     });
-    if (resp.ret !== 0) throw new Error(`wechat sendmessage ret=${resp.ret}: ${resp.errmsg ?? ""}`.trim());
+    // Same live finding as getupdates: success carries no status at all — ret appears only
+    // on failure. Absent status = delivered (verified by the message landing in WeChat).
+    if (resp.ret !== undefined && resp.ret !== 0) throw new Error(`wechat sendmessage ret=${resp.ret}: ${resp.errmsg ?? ""}`.trim());
     return { externalId: `msg/${resp.message_id ?? "unknown"}` };
   }
 }

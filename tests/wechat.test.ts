@@ -159,6 +159,15 @@ describe("WechatReplyChannel", () => {
     expect(sent.item_list?.[0]?.text_item?.text).toBe("done: fixed");
   });
 
+  it("statusless sendmessage success (verified live): absent ret = delivered", async () => {
+    const store = new MemoryWechatStore();
+    store.saveAuth({ token: "t0", baseUrl: "https://ilink.test" });
+    store.saveRoute("wechat:peer/wxid_alice", { toUserId: "wxid_alice", contextToken: "ctx" });
+    const fetchImpl = mockFetch(() => ({ message_id: "77" })); // no ret — the real success shape
+    const ch = new WechatReplyChannel(store, (auth) => new WechatApiClient({ token: auth.token, baseUrl: auth.baseUrl, fetchImpl }));
+    await expect(ch.deliver("wechat:peer/wxid_alice", "hi")).resolves.toMatchObject({ externalId: "msg/77" });
+  });
+
   it("no route → clear error (thread never sent us anything)", async () => {
     const store = new MemoryWechatStore();
     store.saveAuth({ token: "t0", baseUrl: "https://ilink.test" });

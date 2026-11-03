@@ -9,6 +9,7 @@ import type { ReplyChannel, Source, SourceState } from "./source.js";
 import type { Executor } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
 import { runMergeSweep } from "./merge.js";
+import { runWatchdogSweep } from "./watchdog.js";
 import { classify, formatOutcome } from "./runner.js";
 import { runWork } from "./work.js";
 
@@ -76,8 +77,11 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
   // Auto-merge sweep (M6-1) — no-op unless policy.merge.enabled; structural brakes inside.
   const merged = client ? await runMergeSweep(engine, client, repo, policy, channels, (l) => log(`[merge] ${l}`)) : [];
 
-  if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0) {
-    log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} joined=${report.joined} worked=${reports.length} merged=${merged.length}`);
+  // Watchdog sweep (v0.9-1) — no-op unless policy.watchdog.enabled; observes, never admits.
+  const watched = await runWatchdogSweep(engine, policy, channels, { log: (l) => log(`[watchdog] ${l}`) });
+
+  if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0 || watched.length > 0) {
+    log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} joined=${report.joined} worked=${reports.length} merged=${merged.length} nudged=${watched.length}`);
     return true;
   }
   return false;

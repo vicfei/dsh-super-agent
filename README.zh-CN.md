@@ -139,6 +139,8 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 
 **飞书通道(v0.8)。** 设置 `FEISHU_APP_ID` + `FEISHU_APP_SECRET` 后,`watch` 同时监听飞书。一次性配置:在 [open.feishu.cn/app](https://open.feishu.cn/app) 建自建应用,开启**机器人**能力,订阅 `im.message.receive_v1` 并选**长连接**模式(无需公网回调),授予 `im:message` 权限。此后私聊和群内 @提及走同一张准许表(`im_dm` / `im_group` 行——表保持数据化),工单走同一执行回路,回复自动发回会话。配置 `FEISHU_BOT_OPEN_ID` 可精确判定群内 @提及;不配则群消息永不视为 addressing(失败关闭——allowedList 成员仍可经 `listedNotAddressing` 格产生 inferred)。
 
+**Slack 通道(v0.8)。** 设置 `SLACK_BOT_TOKEN`(xoxb-)+ `SLACK_APP_TOKEN`(xapp-)后,`watch` 以 **Socket Mode** 接入 Slack——无需公网地址。一次性配置:在 [api.slack.com/apps](https://api.slack.com/apps) 建应用,启用 Socket Mode,订阅 `message.channels` / `message.groups` / `message.im` / `message.mpim` 事件,授予 `chat:write` 及这些事件所需的读权限。bot 自身的 user id 通过 `auth.test` 自动发现,频道内 @提及判定精确且零手工配置;私聊天然视为 addressing。同一准许表(`im_dm` / `im_group`),同一回路,回复发回频道。
+
 面板(`npm run panel`,仅本机)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志,以及接受模式切换(切 `auto` 会要求确认):
 
 ## 对比

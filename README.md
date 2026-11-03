@@ -139,6 +139,8 @@ Follow-ups on a live ticket join it as **context** instead of spawning duplicate
 
 **Feishu channel (v0.8).** `watch` also listens on Feishu when `FEISHU_APP_ID` + `FEISHU_APP_SECRET` are set. One-time setup: create a self-built app at [open.feishu.cn/app](https://open.feishu.cn/app), enable the **bot** capability, subscribe to `im.message.receive_v1` in **long-connection** mode (no public callback URL), and grant `im:message` permissions. DMs and group @mentions then flow through the same admission table (`im_dm` / `im_group` rows — the table stays data), tickets run the same executor loop, and replies post back into the chat. Set `FEISHU_BOT_OPEN_ID` for precise group @mention detection; without it group messages are never "addressing" (fail-closed — allowed-list members still produce inferred via the `listedNotAddressing` cell).
 
+**Slack channel (v0.8).** With `SLACK_BOT_TOKEN` (xoxb-) + `SLACK_APP_TOKEN` (xapp-) set, `watch` joins Slack over **Socket Mode** — no public URL. One-time setup: create an app at [api.slack.com/apps](https://api.slack.com/apps), enable Socket Mode, subscribe to the `message.channels` / `message.groups` / `message.im` / `message.mpim` events, and grant `chat:write` plus the read scopes those events require. The bot's own user id is discovered via `auth.test`, so @mention detection in channels is precise with zero manual config; DMs are inherently addressed. Same admission rows (`im_dm` / `im_group`), same loop, replies back into the channel.
+
 And the panel (`npm run panel`, localhost) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, and the accept-mode switch (switching to `auto` asks you to confirm):
 
 ## Comparison

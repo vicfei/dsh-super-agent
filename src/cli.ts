@@ -310,13 +310,18 @@ try {
     // iLink Bot Protocol QR login (v0.8 M8-4): the human scans with their WeChat app.
     const { wechatLogin, EngineWechatStore } = await import("./wechat.js");
     const store = new EngineWechatStore(engine);
-    const creds = await wechatLogin((qr) => {
-      if (qr.imgBase64) {
+    const creds = await wechatLogin(async (qr) => {
+      if (qr.imgContent) {
+        const { default: QR } = await import("qrcode");
+        // terminal QR — scannable straight off the screen
+        QR.toString(qr.imgContent, { type: "terminal", small: true }, (err, art) => {
+          if (!err) console.log(art);
+        });
         const file = `${process.cwd()}/wechat-login-qr.png`;
-        writeFileSync(file, Buffer.from(qr.imgBase64, "base64"));
-        console.log(`[wechat] QR image saved to ${file} — scan it with WeChat, then confirm on your phone`);
+        QR.toFile(file, qr.imgContent, { width: 480 }, () => {});
+        console.log(`[wechat] scan the QR above with WeChat (also saved to ${file}), then confirm on your phone`);
       } else {
-        console.log(`[wechat] no image payload from the server (qrcode id ${qr.qrcode})`);
+        console.log(`[wechat] no QR content from the server (qrcode id ${qr.qrcode})`);
       }
     });
     store.saveAuth(creds);

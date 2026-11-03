@@ -79,6 +79,26 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | Watchdog——滞留工作问询 + needs-person 提醒,各一次,永不碰准入 | ✅ v0.9 |
 | 投机执行、链式召回(Inline & Spill) | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
 
+## 文章概念逐条对照
+
+《Super-agent 设计探索》里每个著名概念,以及它在本仓库的位置:
+
+| 文章概念 | 本仓库 | 版本 |
+|---|---|---|
+| §1 连续/高效/主动/持久 | 单引擎、五通道、并行 worktree、SQLite 重启安全 | v0.2+ |
+| §2 Router/Worker 分层 | 确定性 Fast Path(门禁)+ 任意 CLI worker 隔离 worktree;Router 是代码不是模型——它不会被"说动" | v0.3 |
+| §2 触发批处理 | 每线程一次 Slow Path 调用(订阅旁路合并突发) | v0.9 |
+| §3 两级过滤(Fast/Slow Path) | 确定性门禁 → LLM 评估,仅 inferred,失败关闭 | v0.3/命名 v0.9 |
+| §3 订阅直通 | 后续消息并入活工单作上下文;不重复开工 | v0.7 |
+| §3 Inline & Spill + 链式召回 | 8k 内联预算,全文 spill 到 worktree 的 `.dsh/spill/<id>.md` | v0.9.1 |
+| §3 投机执行 + 交付闸 | 无声预演;**交付只由人的 promote 触发** | v1.0 |
+| §4 异步 ReAct、双工 | 子进程 worker + 环境变量契约、进程组超时、outbox 回帖 | v0.3+ |
+| §5 BYOM、状态/环境分离 | 任意 OpenAI 兼容端点;SQLite 状态、worktree 环境 | v0.3 |
+| §6 Watchdog | 只观察只提醒——永不碰准入、永不杀任务;`health` CLI | v0.9 |
+| 授权模型(docs/002) | 核心:准许表、explicit/inferred、observe→auto、Mandate 与重验 | v0.0.1→ |
+
+**我们在生态里的位置**:IM 网关([dsh-im](https://github.com/xmanrui/dsh-im)、[dsh-wechat](https://github.com/xcisxc29/dsh-wechat))把聊天*接进 DSH 会话*——人驱动 agent 的遥控器。本仓库是另一种东西:**带准入控制的自主工人**——消息过门禁,工作在 worktree 里发生,交付过审批自动合并。不同层,精神上可组合。
+
 ## 快速开始
 
 一行试用(发布后无需克隆仓库):

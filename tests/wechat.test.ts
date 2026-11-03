@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { WeixinMessage } from "../src/wechat.js";
 import {
   EngineWechatStore,
+  chunkWechatReply,
   MemoryWechatStore,
   WechatApiClient,
   WechatReplyChannel,
@@ -173,6 +174,35 @@ describe("WechatReplyChannel", () => {
     store.saveAuth({ token: "t0", baseUrl: "https://ilink.test" });
     const ch = new WechatReplyChannel(store, (auth) => new WechatApiClient({ token: auth.token, baseUrl: auth.baseUrl }));
     await expect(ch.deliver("wechat:peer/ghost", "hi")).rejects.toThrow(/no wechat route/);
+  });
+});
+
+describe("chunkWechatReply + chunked delivery", () => {
+  it("short stays whole; long splits at boundaries, parts reassemble losslessly", () => {
+    expect(chunkWechatReply("short")).toEqual(["short"]);
+    const paras = Array.from({ length: 30 }, (_, i) => `paragraph ${i} ${"x".repeat(90)}`).join("\n\n");
+    const parts = chunkWechatReply(paras);
+    expect(parts.length).toBeGreaterThan(1);
+    for (const p of parts) expect(p.length).toBeLessThanOrEqual(1800);
+    expect(parts.join("\n\n").replace(/\n+/g, "\n")).toContain("paragraph 29");
+  });
+
+  it("the channel sends each part as its own message, same context_token", async () => {
+    const store = new MemoryWechatStore();
+    store.saveAuth({ token: "t0", baseUrl: "https://ilink.test" });
+    store.saveRoute("wechat:peer/a", { toUserId: "a", contextToken: "ctx" });
+    const bodies: { text: string; token: string }[] = [];
+    let id = 0;
+    const fetchImpl = mockFetch((_u, init) => {
+      const msg = (JSON.parse(String(init?.body)).msg) as WeixinMessage;
+      bodies.push({ text: msg.item_list![0]!.text_item!.text!, token: msg.context_token! });
+      return { message_id: `m${++id}` };
+    });
+    const ch = new WechatReplyChannel(store, (auth) => new WechatApiClient({ token: auth.token, baseUrl: auth.baseUrl, fetchImpl }));
+    await ch.deliver("wechat:peer/a", "p1 ".repeat(1200)); // ~3600 chars → 2-3 parts
+    expect(bodies.length).toBeGreaterThan(1);
+    expect(bodies.every((b) => b.token === "ctx")).toBe(true);
+    expect(bodies.map((b) => b.text).join("").replace(/ /g, "")).toContain("p1p1");
   });
 });
 

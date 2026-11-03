@@ -199,8 +199,9 @@ export interface QrPayload {
  */
 export async function wechatLogin(
   onQr: (qr: QrPayload) => void,
-  opts: { apiBase?: string; fetchImpl?: typeof fetch; pollMs?: number; maxWaitMs?: number } = {},
+  opts: { apiBase?: string; fetchImpl?: typeof fetch; pollMs?: number; maxWaitMs?: number; onBinder?: (id: string | null) => void } = {},
 ): Promise<WechatAuth> {
+  const onBinder = opts.onBinder;
   const fetchImpl = opts.fetchImpl ?? fetch;
   const base = (opts.apiBase ?? WECHAT_DEFAULT_BASE).replace(/\/$/, "");
   const headers = {
@@ -224,8 +225,9 @@ export async function wechatLogin(
     await new Promise((r) => setTimeout(r, opts.pollMs ?? 2000));
     const stRes = await fetchImpl(`${base}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qr.qrcode)}`, { headers });
     if (!stRes.ok) throw new Error(`wechat get_qrcode_status → HTTP ${stRes.status}`);
-    const st = (await stRes.json()) as { status?: string; bot_token?: string; baseurl?: string };
+    const st = (await stRes.json()) as { status?: string; bot_token?: string; baseurl?: string; ilink_user_id?: string; user_id?: string };
     if (st.status === "confirmed" && st.bot_token) {
+      onBinder?.(st.ilink_user_id ?? st.user_id ?? null); // the scanner's identity, for the allowlist suggestion
       return { token: st.bot_token, baseUrl: st.baseurl ?? base };
     }
     if (st.status === "expired") throw new Error("wechat QR expired — run wechat-login again");
@@ -331,6 +333,23 @@ export class WechatSource implements Source {
 
 // ── ReplyChannel ────────────────────────────────────────────────────────────────
 
+/** Split a long reply for WeChat at ~1800 chars, preferring paragraph then newline then space
+ * boundaries (the ecosystem norm: dsh-im 1800, dsh-dot 1900, dsh-wechat segmented). */
+export function chunkWechatReply(body: string, limit = 1800): string[] {
+  if (body.length <= limit) return [body];
+  const chunks: string[] = [];
+  let rest = body;
+  while (rest.length > limit) {
+    const window = rest.slice(0, limit);
+    let cut = Math.max(window.lastIndexOf("\n\n"), window.lastIndexOf("\n"), window.lastIndexOf(" "));
+    if (cut < limit * 0.5) cut = limit; // no sane boundary — hard cut
+    chunks.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\n+/, "");
+  }
+  if (rest.length > 0) chunks.push(rest);
+  return chunks;
+}
+
 export class WechatReplyChannel implements ReplyChannel {
   constructor(
     private readonly store: WechatStore,
@@ -346,17 +365,23 @@ export class WechatReplyChannel implements ReplyChannel {
     const auth = this.store.loadAuth();
     const route = this.store.loadRoute(threadId);
     if (!auth || !route) throw new Error(`no wechat route for thread ${threadId} (not logged in, or the thread never sent us a message)`);
-    const resp = await this.clientOf(auth).sendMessage({
-      to_user_id: route.toUserId,
-      ...(route.groupId ? { group_id: route.groupId } : {}),
-      ...(route.sessionId ? { session_id: route.sessionId } : {}),
-      message_type: 2, // BOT
-      item_list: [{ type: 1, text_item: { text: body } }],
-      context_token: route.contextToken, // "回复时必须原样回传" — routes the reply
-    });
-    // Same live finding as getupdates: success carries no status at all — ret appears only
-    // on failure. Absent status = delivered (verified by the message landing in WeChat).
-    if (resp.ret !== undefined && resp.ret !== 0) throw new Error(`wechat sendmessage ret=${resp.ret}: ${resp.errmsg ?? ""}`.trim());
-    return { externalId: `msg/${resp.message_id ?? "unknown"}` };
+    const client = this.clientOf(auth);
+    const parts = chunkWechatReply(body);
+    let lastMessageId = "unknown";
+    for (const part of parts) {
+      const resp = await client.sendMessage({
+        to_user_id: route.toUserId,
+        ...(route.groupId ? { group_id: route.groupId } : {}),
+        ...(route.sessionId ? { session_id: route.sessionId } : {}),
+        message_type: 2, // BOT
+        item_list: [{ type: 1, text_item: { text: part } }],
+        context_token: route.contextToken, // "回复时必须原样回传" — routes the reply
+      });
+      // Same live finding as getupdates: success carries no status at all — ret appears only
+      // on failure. Absent status = delivered (verified by the message landing in WeChat).
+      if (resp.ret !== undefined && resp.ret !== 0) throw new Error(`wechat sendmessage ret=${resp.ret}: ${resp.errmsg ?? ""}`.trim());
+      if (resp.message_id) lastMessageId = resp.message_id;
+    }
+    return { externalId: `msg/${lastMessageId}` };
   }
 }

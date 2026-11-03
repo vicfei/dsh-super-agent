@@ -317,6 +317,7 @@ try {
     // iLink Bot Protocol QR login (v0.8 M8-4): the human scans with their WeChat app.
     const { wechatLogin, EngineWechatStore } = await import("./wechat.js");
     const store = new EngineWechatStore(engine);
+    let binder: string | null = null;
     const creds = await wechatLogin(async (qr) => {
       if (qr.imgContent) {
         const { default: QR } = await import("qrcode");
@@ -330,9 +331,13 @@ try {
       } else {
         console.log(`[wechat] no QR content from the server (qrcode id ${qr.qrcode})`);
       }
-    });
+    }, { onBinder: (id) => { binder = id; } });
     store.saveAuth(creds);
     console.log("[wechat] logged in — credentials stored; the watch daemon (same --db) arms the source automatically");
+    if (binder) {
+      engine.kvSet("wechat_binder", binder);
+      console.log(`[wechat] scanner identity captured (${binder}) — consider adding it to allowedList so their DMs are explicit`);
+    }
   } else if (command === "health") {
     // Watchdog's read-only体检 (v0.9-1): no writes, no replies — safe at any time.
     const { healthReport } = await import("./watchdog.js");

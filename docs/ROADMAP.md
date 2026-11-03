@@ -92,7 +92,8 @@ merge conditions are checkable facts, not model judgment.
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)
-- WeChat polish: scanner ilink_user_id auto-registry, typing heartbeat
+- [x] WeChat polish (v1.0.1): 1800-char reply chunking, scanner ilink_user_id capture
+      (typing heartbeat waits for a live-verified smoke of its ticket flow)
 
 ## Non-goals (v0)
 

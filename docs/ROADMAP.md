@@ -51,7 +51,8 @@ merge conditions are checkable facts, not model judgment.
       allowed-list (non-bot) approval **covering the head commit**, a changed-lines cap
       (default ±200), and any allowed-list CHANGES_REQUESTED is a veto until re-reviewed;
       default **off**, opt-in via `policy.merge`; idempotent sweep each watch cycle
-- [ ] GitHub App auth: installation tokens (hourly refresh), replies from the bot identity, PAT fallback
+- [x] GitHub App auth: installation tokens (hourly refresh, zero-dep RS256 JWT, auto-discovery),
+      replies from the bot identity, branch push rides the same credential, PAT fallback
 - [ ] Panel person-stages: per-person ticket/delivery queues
 
 ## Later (from the article's design, deliberately after the slice)

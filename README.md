@@ -125,6 +125,12 @@ Auto-merge (default **off**) closes the loop with structural brakes — every co
 - no allowed-list reviewer's latest stance is CHANGES_REQUESTED (a one-person veto until re-reviewed)
 - the merge PUT is pinned to the approved SHA — if the head moved, it re-evaluates next cycle
 
+**GitHub App auth (optional, recommended).** By default everything rides a personal token (`GITHUB_TOKEN`): replies post as *you*, and rate limits are per-user. Configure a GitHub App instead and replies post as the App's bot identity (the gate already caps bots at inferred — they can never issue explicit requests), limits are per-installation, and installation tokens rotate hourly — no long-lived secret in the environment:
+
+1. Create a user-owned App at [github.com/settings/apps/new](https://github.com/settings/apps/new) — permissions: **Issues: read & write, Pull requests: read & write, Contents: read & write, Metadata: read**; no webhook/subscription needed (everything is polled)
+2. Install it on your repo, then set the environment: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (the PEM, `\n`-escaped — or `GITHUB_APP_PRIVATE_KEY_PATH`), optionally `GITHUB_APP_INSTALLATION_ID` (auto-discovered from `--repo` when omitted)
+3. Run as usual — startup logs `auth: GitHub App …`. Precedence: `--token` flag > App env > `GITHUB_TOKEN`; branch pushes ride the same credential over https (ssh remotes keep using your ssh key)
+
 And the panel (`npm run panel`, localhost) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, and the accept-mode switch (switching to `auto` asks you to confirm):
 
 ## Comparison

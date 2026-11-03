@@ -12,6 +12,7 @@ import { evaluateGate } from "./gate.js";
 import type { Assessor } from "./assess.js";
 import { llmAssessor, stubAssessor } from "./assess.js";
 import { GitHubClient } from "./github/client.js";
+import { AppTokenProvider, appAuthFromEnv } from "./github/app-auth.js";
 import { GitHubSource } from "./github/source.js";
 import { Executor, type ExecutorConfig } from "./executor.js";
 import { runWork } from "./work.js";
@@ -119,9 +120,35 @@ function buildAssessor(): Assessor {
 }
 
 try {
-  const token = args.token ?? process.env.GITHUB_TOKEN;
-  const client = new GitHubClient({ token: token || undefined });
-  if (!token && (command === "poll" || command === "watch" || command === "work")) console.warn(NO_TOKEN_HINT);
+  // Credential precedence (M6-2): explicit --token > GitHub App env > GITHUB_TOKEN > anonymous.
+  function buildClient(): { client: GitHubClient; identity: string } {
+    if (args.token) return { client: new GitHubClient({ token: args.token }), identity: "token (--token)" };
+    let appAuth: ReturnType<typeof appAuthFromEnv> = null;
+    try {
+      appAuth = appAuthFromEnv();
+    } catch (e) {
+      die(`GitHub App auth misconfigured: ${e instanceof Error ? e.message : e}`);
+    }
+    if (appAuth) {
+      const provider = new AppTokenProvider({
+        ...appAuth,
+        ...(args.repo ? { repo: args.repo } : {}), // installation auto-discovery when id absent
+      });
+      return {
+        client: new GitHubClient({ tokenProvider: provider }),
+        identity: `GitHub App ${appAuth.appId}${appAuth.installationId ? ` (installation ${appAuth.installationId})` : ""}`,
+      };
+    }
+    const envToken = process.env.GITHUB_TOKEN;
+    return { client: new GitHubClient({ token: envToken || undefined }), identity: envToken ? "token (GITHUB_TOKEN)" : "anonymous" };
+  }
+
+  const { client, identity } = buildClient();
+  const authenticated = identity !== "anonymous";
+  if (identity.startsWith("GitHub App")) {
+    console.log(`auth: ${identity} — hourly installation tokens; replies post as the App bot identity`);
+  }
+  if (!authenticated && (command === "poll" || command === "watch" || command === "work")) console.warn(NO_TOKEN_HINT);
 
   if (command === "poll") {
     const policy = loadPolicy();
@@ -172,7 +199,7 @@ try {
       engine,
       source: new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client }),
       executor: new Executor(execCfg),
-      client: token ? client : null,
+      client: authenticated ? client : null,
       repo: args.repo!,
       policy,
       assessment: async (t) => {
@@ -185,7 +212,7 @@ try {
     if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
     const execCfg = loadExecutorConfig();
     const executor = new Executor(execCfg);
-    const reports = await runWork(engine, executor, args.repo, token ? client : null);
+    const reports = await runWork(engine, executor, args.repo, authenticated ? client : null);
     if (reports.length === 0) console.log("no claimable tickets");
     for (const r of reports) {
       console.log(`#${r.ticketId} [${r.outcome}] ${r.detail}`);
@@ -222,7 +249,7 @@ try {
   } else if (command === "merge") {
     // One-shot version of the watch cycle's auto-merge sweep (cron-friendly).
     if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
-    if (!token) die(`merge needs GITHUB_TOKEN to read reviews and merge${WITH_HELP}`);
+    if (!authenticated) die(`merge needs a credential to read reviews and merge — export GITHUB_TOKEN or configure the GitHub App (GITHUB_APP_ID + key, see README)${WITH_HELP}`);
     const policy = readPolicyConfig();
     engine.setPolicyIfChanged(policy);
     const { runMergeSweep } = await import("./merge.js");

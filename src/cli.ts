@@ -172,7 +172,7 @@ try {
     if (batch.length === 0) console.log("no new triggers");
     for (const r of report.refusals) console.log(`[REFUSED] ${r}`);
     console.log(
-      `— fresh=${report.fresh} duplicates=${report.duplicates} ticketsOpened=${report.ticketsOpened} resumed=${report.resumed} (acceptMode=${policy.acceptMode}, policy v${policy.version}, assess=${args.assessment})`,
+      `— fresh=${report.fresh} duplicates=${report.duplicates} ticketsOpened=${report.ticketsOpened} resumed=${report.resumed} joined=${report.joined} (acceptMode=${policy.acceptMode}, policy v${policy.version}, assess=${args.assessment})`,
     );
 
     if (args.post) {
@@ -230,7 +230,8 @@ try {
     } else {
       for (const t of rows) {
         const extra = [t.state === "ended" && t.stoppedBy ? `stopped-by:${t.stoppedBy}` : "",
-          t.revokedReason ?? "", t.resumedCount ? `resumed×${t.resumedCount}` : ""].filter(Boolean).join(" ");
+          t.revokedReason ?? "", t.resumedCount ? `resumed×${t.resumedCount}` : "",
+          t.followUps ? `fu×${t.followUps}` : ""].filter(Boolean).join(" ");
         console.log(`#${t.id} [${t.stage}] ${t.strength} ${t.threadId} opener=${t.opener} ${extra}`.trimEnd());
       }
     }

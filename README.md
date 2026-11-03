@@ -73,7 +73,8 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | Panel — one page of what awaits a human, observe records, mode switch | ✅ v0.4.0 |
 | PR delivery — worker commits become a branch + pull request, linked in the report | ✅ v0.5.0 |
 | Auto-merge — delivery requirements: own PR, allowed-list approval covering head, ±line cap; any CHANGES_REQUESTED vetoes | ✅ v0.6 |
-| GitHub App auth, person-stages panel | M6 — see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Subscription bypass — an open ticket absorbs the opener's follow-ups as context; resume carries the resuming message to the worker | ✅ v0.7 |
+| GitHub App auth — hourly installation tokens, bot identity; person-stages panel | ✅ v0.6 |
 | Feishu / Slack sources, speculative execution, Watchdog | later — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## Quick start
@@ -126,6 +127,8 @@ Auto-merge (default **off**) closes the loop with structural brakes — every co
 - the merge PUT is pinned to the approved SHA — if the head moved, it re-evaluates next cycle
 
 > **Sole operators, note:** the approval bullet is why delivery should run under GitHub App auth (next section). With a personal token the agent's PRs are authored by *you* — and GitHub never lets you approve your own PR, so the merge gate can never be satisfied. Team setups can approve each other; a single operator needs the bot identity.
+
+Follow-ups on a live ticket join it as **context** instead of spawning duplicates — the subscription bypass: while your ticket is open, adding "also handle X" in the same thread accumulates into the worker's next run (one ticket, one worktree, one PR); a resumed ticket likewise carries the resuming message to the worker. Other people's messages are not joined — their text entering the worker's context would widen the injection surface.
 
 **GitHub App auth (required for auto-merge when you operate alone).** By default everything rides a personal token (`GITHUB_TOKEN`): replies post as *you*, and rate limits are per-user. Configure a GitHub App instead and the agent acts as its own principal: PRs and replies carry the App's bot identity (the gate already caps bots at inferred — they can never issue explicit requests), so you become the legitimate approver; limits are per-installation, and installation tokens rotate hourly — no long-lived secret in the environment:
 

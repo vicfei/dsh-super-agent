@@ -70,7 +70,7 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
   const merged = client ? await runMergeSweep(engine, client, repo, policy, (l) => log(`[merge] ${l}`)) : [];
 
   if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0) {
-    log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} worked=${reports.length} merged=${merged.length}`);
+    log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} joined=${report.joined} worked=${reports.length} merged=${merged.length}`);
     return true;
   }
   return false;

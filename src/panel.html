@@ -117,8 +117,10 @@ async function render() {
           .map(st => p.tickets.filter(t => t.stage === st).length)
           .map((n, i) => n > 0 ? `<span class="quiet">${['queued','working','needs-person','ended'][i]}:${n}</span>` : '')
           .filter(Boolean).join(' · ');
+        const fu = p.tickets.reduce((n, t) => n + (t.followUps || 0), 0);
+        const fuTag = fu > 0 ? ` · <span class="quiet">follow-ups:${fu}</span>` : '';
         const dels = p.deliveries.map(d => `PR #${d.prNumber} ${d.state}`).join(' · ');
-        return `<div class="card"><b>${esc(who)}</b> — ${counts || 'no open work'}${dels ? `<div class="quiet">${dels}</div>` : ''}</div>`;
+        return `<div class="card"><b>${esc(who)}</b> — ${counts || 'no open work'}${fuTag}${dels ? `<div class="quiet">${dels}</div>` : ''}</div>`;
       }).join('');
 
   const deliveries = s.deliveries || [];

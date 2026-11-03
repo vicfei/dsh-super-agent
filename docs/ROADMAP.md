@@ -34,19 +34,30 @@ Vertical slice first: one Source, one gate, one executor, one reply channel. Eve
 - [x] Demo GIF built from a real run (issue #11): empty allowed list → injection comment gated out and recorded, nothing executed; listing the operator → @mention accepted → worktree work → report posted. Embedded in both READMEs
 - [x] Panel endpoint tests (page, state JSON, mode switch versioning, stop, shadow records)
 
-## Milestone 5 — conversion loop (in progress)
+## Milestone 5 — conversion loop (done)
 
 - [x] CI: Node 20/22 matrix + badges; lockfile guard against mirror URLs (root-caused Tencent-mirror lockfile contamination breaking hosted runners)
 - [x] `watch` daemon: single-process poll/work/panel, jitter, exponential backoff, graceful stop
 - [x] PR delivery: worker commits → `dsh/ticket-N` branch pushed → pull request opened via API → report links it; delivery failures degrade gracefully
-- [x] npm publish (`@vicfei/dsh-super-agent`) + npx path — packaged (bin `dsh-super-agent`, typed programmatic API), publish workflow on tag/manual dispatch via `NPM_TOKEN` secret
-- [ ] DX polish: friendly errors, issue templates, CONTRIBUTING
+- [x] npm publish (`@vicfei/dsh-super-agent`) + npx path — packaged (bin `dsh-super-agent`, typed programmatic API), publish workflow on tag/manual dispatch via **Trusted Publishing (OIDC)** — validated by v0.5.1 (needs node ≥22.14 + npm ≥11.5.1 + `repository.url` matching provenance)
+- [x] DX polish (v0.5.1): `--help`/`--version`, friendly unknown-option errors, config auto-scaffold from packaged examples, token guidance, issue templates, CONTRIBUTING
+
+## Milestone 6 — autonomy with structural brakes (in progress)
+
+The loop currently ends at "PR opened". M6 closes it while keeping every brake structural —
+merge conditions are checkable facts, not model judgment.
+
+- [ ] Auto-merge with delivery requirements: only PRs we opened (`dsh/ticket-N` branch), an
+      allowed-list (non-bot) approval **covering the head commit**, a changed-lines cap
+      (default ±200), and any allowed-list CHANGES_REQUESTED is a veto until re-reviewed;
+      default **off**, opt-in via `policy.merge`; idempotent sweep each watch cycle
+- [ ] GitHub App auth: installation tokens (hourly refresh), replies from the bot identity, PAT fallback
+- [ ] Panel person-stages: per-person ticket/delivery queues
 
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)
-- Feishu / Slack sources
-- Auto-merge with delivery-requirements prompt (default: own PR, approvals cover head, <200 lines)
+- Feishu / Slack sources (multi-source watch routing first)
 - Batching Router, chain-of-recall context, speculative execution, Watchdog
 
 ## Non-goals (v0)

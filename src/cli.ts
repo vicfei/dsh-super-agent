@@ -283,6 +283,13 @@ try {
       const ok = engine.stopTicket(stopId, "panel");
       console.log(ok ? `ticket #${stopId} ended by panel` : `ticket #${stopId} not open (or unknown)`);
     }
+    const promoteId = positionals[1] === "promote" && positionals[2] !== undefined ? Number(positionals[2]) : undefined;
+    if (promoteId !== undefined) {
+      const ok = engine.promoteTicket(promoteId, "panel");
+      console.log(ok
+        ? `ticket #${promoteId} promoted — the watch daemon will deliver the rehearsed work (PR + report)`
+        : `ticket #${promoteId} is not a speculative ticket awaiting promote`);
+    }
     const rows = engine.tickets();
     if (rows.length === 0) {
       console.log("no tickets");

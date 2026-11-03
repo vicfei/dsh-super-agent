@@ -74,6 +74,27 @@ export interface Policy {
   merge?: Partial<MergePolicy>;
   /** Watchdog thresholds (v0.9). Absent = disabled — nothing nudges by default. */
   watchdog?: Partial<WatchdogPolicy>;
+  /** Speculative execution (v1.0). Absent = disabled — observe stays silent. */
+  speculation?: Partial<SpeculationPolicy>;
+}
+
+/**
+ * Speculative execution (v1.0, issue #68): in observe mode, positive inferred candidates may
+ * rehearse — the work runs in the worktree but in total silence (no push, no PR, no reply).
+ * The deliver gate is a HUMAN promote; nothing is ever delivered without it.
+ */
+export interface SpeculationPolicy {
+  enabled: boolean;
+  /** Open speculative tickets at once; overflow stays shadow-only. */
+  maxSpeculative: number;
+}
+
+export function defaultSpeculationPolicy(): SpeculationPolicy {
+  return { enabled: false, maxSpeculative: 1 };
+}
+
+export function speculationPolicyOf(policy: Policy): SpeculationPolicy {
+  return { ...defaultSpeculationPolicy(), ...(policy.speculation ?? {}) };
 }
 
 /**

@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS ticket (
   policy_version INTEGER NOT NULL,
   basis TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'open', -- open | ended
+  speculative INTEGER NOT NULL DEFAULT 0, -- 1 = rehearsing silently; deliver needs a human promote
+  promoted_at TEXT,
   stopped_by TEXT, stopped_at TEXT,
   revoked_reason TEXT,
   resumed_count INTEGER NOT NULL DEFAULT 0,
@@ -115,6 +117,8 @@ export interface IngestReport {
   resumed: number;
   /** Subscription bypass: follow-ups that joined an open ticket instead of spawning one (v0.7-1). */
   joined: number;
+  /** Speculative tickets opened from would-accept shadows (v1.0). */
+  speculative: number;
   refusals: string[];
 }
 
@@ -133,6 +137,8 @@ export interface TicketView {
   resumedCount: number;
   /** Subscription-bypass follow-ups joined into this ticket's context. */
   followUps: number;
+  /** v1.0: rehearsing silently — delivery needs a human promote. */
+  speculative: boolean;
   createdAt: string;
 }
 
@@ -271,7 +277,7 @@ export class Engine {
 
   ingest(batch: IngestItem[], nextBySource?: Record<string, SourceState>): IngestReport {
     const now = new Date().toISOString();
-    const report: IngestReport = { fresh: 0, duplicates: 0, ticketsOpened: 0, resumed: 0, joined: 0, refusals: [] };
+    const report: IngestReport = { fresh: 0, duplicates: 0, ticketsOpened: 0, resumed: 0, joined: 0, speculative: 0, refusals: [] };
     const policy = this.policy();
     const policyVersion = policy?.version ?? 0;
 
@@ -312,6 +318,19 @@ export class Engine {
         const wouldAccept = item.resolution.action === "shadow" ? 1 : 0;
         const basis = "basis" in item.resolution ? item.resolution.basis : item.gate.basis;
         insertDecision.run(t.id, kind, strength, basis, wouldAccept, policyVersion, now);
+
+        if (item.resolution.action === "shadow" && speculationEnabled(policy)) {
+          // v1.0 speculative execution: a positive inferred candidate in observe mode may
+          // rehearse — the ticket runs in total silence; delivery needs a human promote.
+          const open = this.db
+            .prepare("SELECT COUNT(*) c FROM ticket WHERE state = 'open' AND speculative = 1")
+            .get() as { c: number };
+          if (Number(open.c) < speculationCap(policy)) {
+            const info = insertTicket.run(t.threadId, t.id, t.author.login, "inferred", policyVersion, basis, now, now);
+            this.db.prepare("UPDATE ticket SET speculative = 1 WHERE id = ?").run(Number(info.lastInsertRowid));
+            report.speculative++;
+          }
+        }
 
         if (item.resolution.action === "accept") {
           // Subscription bypass (v0.7-1, issue #40): a thread with a live ticket fans out to that
@@ -386,6 +405,27 @@ export class Engine {
 
   // ── person commands (panel command acting directly — docs/002) ───────────
 
+  /** v1.0 deliver gate: a person promotes a speculative ticket — delivery is authorized. */
+  promoteTicket(id: number, byLogin: string): boolean {
+    const now = new Date().toISOString();
+    const r = this.db
+      .prepare("UPDATE ticket SET speculative = 0, promoted_at = ?, updated_at = ? WHERE id = ? AND speculative = 1")
+      .run(now, now, id);
+    void byLogin;
+    return r.changes > 0;
+  }
+
+  /** Promoted, work done, not yet delivered — the watch promote sweep's work list. */
+  promotedPendingDelivery(): { id: number; threadId: string; opener: string }[] {
+    const rows = this.db.prepare(`
+      SELECT t.id, t.thread_id, t.opener_login FROM ticket t
+      WHERE t.promoted_at IS NOT NULL
+        AND EXISTS (SELECT 1 FROM assignment a WHERE a.ticket_id = t.id AND a.state = 'ended' AND a.exit_code = 0)
+        AND NOT EXISTS (SELECT 1 FROM delivery d WHERE d.ticket_id = t.id)
+      ORDER BY t.id`).all() as Record<string, unknown>[];
+    return rows.map((r) => ({ id: Number(r.id), threadId: String(r.thread_id), opener: String(r.opener_login) }));
+  }
+
   /** A person's stop withdraws the Mandate and ends the Ticket. */
   stopTicket(id: number, byLogin: string): boolean {
     const now = new Date().toISOString();
@@ -400,14 +440,16 @@ export class Engine {
   /** Open tickets claimable by work: never assigned, or last assignment ended cleanly
    * (a resumed ticket is re-claimable; a failed one waits for a person). The body is the
    * accumulated context: original request + subscription-bypass follow-ups in order. */
-  claimQueued(limit: number): { id: number; threadId: string; body: string; author: string; spills: SpillFile[] }[] {
+  claimQueued(limit: number): { id: number; threadId: string; body: string; author: string; spills: SpillFile[]; speculative: boolean }[] {
     const rows = this.db.prepare(`
-      SELECT t.id, t.thread_id, tr.body, tr.author_login
+      SELECT t.id, t.thread_id, tr.body, tr.author_login, t.speculative
       FROM ticket t JOIN trigger tr ON tr.id = t.trigger_id
       LEFT JOIN assignment la ON la.ticket_id = t.id
         AND la.id = (SELECT MAX(b.id) FROM assignment b WHERE b.ticket_id = t.id)
       WHERE t.state = 'open' AND (la.id IS NULL OR (la.state = 'ended' AND la.exit_code = 0))
       ORDER BY t.id LIMIT ?`).all(limit) as Record<string, unknown>[];
+    const openSpec = (this.db.prepare("SELECT COUNT(*) c FROM ticket WHERE state = 'open' AND speculative = 1").get() as { c: number }).c;
+    const cap = speculationCap(this.policy());
     const followupsOf = this.db.prepare(`
       SELECT tr.body, tr.author_login, f.ts FROM ticket_followup f
       JOIN trigger tr ON tr.id = f.trigger_id WHERE f.ticket_id = ? ORDER BY f.id`);
@@ -434,8 +476,10 @@ export class Engine {
         parts.push(`${header}\n${full.slice(0, SPILL_PREVIEW)}\n[spilled → ${file}]`);
         budget = 0;
       }
-      return { id, threadId: String(r.thread_id), body: parts.join("\n\n"), author: String(r.author_login), spills };
-    });
+      const speculative = r.speculative === 1;
+      if (speculative && openSpec > cap) return null; // cap reached: leave rehearsing for a later claim
+      return { id, threadId: String(r.thread_id), body: parts.join("\n\n"), author: String(r.author_login), spills, speculative };
+    }).filter((x): x is NonNullable<typeof x> => x !== null);
   }
 
   startAssignment(ticketId: number, worktree: string): number {
@@ -592,6 +636,7 @@ export class Engine {
         ...(r.revoked_reason !== null ? { revokedReason: String(r.revoked_reason) } : {}),
         resumedCount: Number(r.resumed_count),
         followUps: followUps.get(id) ?? 0,
+        speculative: r.speculative === 1,
         createdAt: String(r.created_at),
       };
     });
@@ -628,6 +673,14 @@ export class Engine {
     this.db.prepare("UPDATE effect SET attempts = ?, next_due_at = ?, last_error = ?, updated_at = ? WHERE id = ?")
       .run(attempts, new Date(now.getTime() + delay).toISOString(), error, now.toISOString(), id);
   }
+}
+
+function speculationEnabled(policy: Policy | undefined): boolean {
+  return policy?.speculation?.enabled === true;
+}
+
+function speculationCap(policy: Policy | undefined): number {
+  return Number(policy?.speculation?.maxSpeculative ?? 1);
 }
 
 function toDeliveryView(r: Record<string, unknown>): DeliveryView {

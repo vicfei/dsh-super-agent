@@ -28,6 +28,10 @@ function git(dir: string, args: string[]): Promise<string> {
 
 export interface DeliveryOutcome {
   prUrl?: string;
+  /** Set when a PR opened — enough for the engine to track it for the merge sweep. */
+  prNumber?: number;
+  branch?: string;
+  headSha?: string;
   error?: string;
 }
 
@@ -47,6 +51,7 @@ export async function deliverPullRequest(
     const count = Number(await git(result.worktree, ["rev-list", "--count", `${result.baseSha}..HEAD`]));
     if (count === 0) return {}; // nothing to deliver
     const branch = `dsh/ticket-${ticket.id}`;
+    const headSha = await git(result.worktree, ["rev-parse", "HEAD"]);
     await git(result.worktree, ["push", "origin", `HEAD:refs/heads/${branch}`]);
     const base = await client.getDefaultBranch(repo);
     const firstLine = trigger.body.trim().split("\n")[0].slice(0, 72) || "ticket work";
@@ -70,7 +75,7 @@ export async function deliverPullRequest(
         "```",
       ].join("\n"),
     });
-    return { prUrl: pr.html_url };
+    return { prUrl: pr.html_url, prNumber: pr.number, branch, headSha };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -104,6 +109,12 @@ export async function runWork(
     if (ok) {
       engine.completeTicket(t.id);
       const delivery = client ? await deliverPullRequest(client, repo, t, { body: t.body, author: t.author }, result) : {};
+      if (delivery.prNumber !== undefined) {
+        engine.recordDelivery({
+          repo, prNumber: delivery.prNumber, ticketId: t.id, threadId: t.threadId,
+          branch: delivery.branch!, headSha: delivery.headSha!,
+        });
+      }
       let body = reportBody(t.id, result);
       if (delivery.prUrl) body += `\n\nPR: ${delivery.prUrl}`;
       if (delivery.error) body += `\n\n(delivery failed: ${delivery.error})`;

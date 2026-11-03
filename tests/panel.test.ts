@@ -61,10 +61,18 @@ describe("panel HTTP API", () => {
     engine.ingest([item("github:issue:1")]);
     const s = (await (await fetch(`${base}/api/state`)).json()) as {
       policy: Policy; tickets: { id: number }[]; decisions: { author: string; excerpt: string }[];
+      deliveries: unknown[];
     };
     expect(s.policy.acceptMode).toBe("observe");
     expect(s.tickets).toHaveLength(1);
     expect(s.decisions[0]).toMatchObject({ author: "alice", excerpt: "fix the bug" });
+    expect(s.deliveries).toEqual([]);
+  });
+
+  it("state lists deliveries — an open PR is a thing awaiting a human", async () => {
+    engine.recordDelivery({ repo: "o/r", prNumber: 42, ticketId: 1, threadId: "github:o/r/issues/5", branch: "dsh/ticket-1", headSha: "a" });
+    const s = (await (await fetch(`${base}/api/state`)).json()) as { deliveries: { prNumber: number; state: string }[] };
+    expect(s.deliveries[0]).toMatchObject({ prNumber: 42, state: "open" });
   });
 
   it("mode switch is versioned; invalid modes rejected; unknown paths 404", async () => {

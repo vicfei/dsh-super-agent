@@ -72,8 +72,9 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | LLM 评估层——任意 OpenAI 兼容端点,失败关闭,仅 inferred 调用 | ✅ v0.3.0 |
 | 面板——只列等人事项、观察记录、模式切换 | ✅ v0.4.0 |
 | PR 交付——Worker 的新提交自动变分支+Pull Request,报告带链接 | ✅ v0.5.0 |
-| PR 交付——Worker 的新提交自动变分支+Pull Request,报告带链接 | ✅ v0.5.0 |
-| 飞书 / Slack 源、auto-merge、投机执行、Watchdog | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Auto-merge——交付门槛:自己的 PR、allowedList 审批覆盖头提交、±行数上限;CHANGES_REQUESTED 一票否决 | ✅ v0.6 |
+| GitHub App 认证、按人分阶段面板 | M6——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
+| 飞书 / Slack 源、投机执行、Watchdog | 路线图——见 [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## 快速开始
 
@@ -115,6 +116,14 @@ npm run watch -- --repo you/your-repo --agent-login your-login --executor-config
 ```
 
 `claude`、`codex`、`opencode`、`aider` 或任意 shell 命令都可以当 Worker;30 分钟后台上限(超时杀整个进程组)、Worker 槽位、按名封锁的命令、报告回帖到原线程。评估层用 `--assessment llm`(+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`)接真实模型:只对 inferred 候选调用,explicit 永不等待,出错失败关闭判 negative。
+
+Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件都是可核查的事实,从不依赖模型自觉。在 `policy.json` 设 `"merge": { "enabled": true, … }`,watch 周期(或一次性 `npm run merge -- --repo you/your-repo`)只在**全部满足**时合并工单 PR:
+
+- 这个 PR 是 agent 自己开的(`dsh/ticket-N` 分支)
+- 一位 **allowedList 非机器人**评审在恰好当前头提交 SHA 上 approve——过期审批永不合并
+- additions + deletions ≤ `maxChangedLines`(默认 200)
+- 没有任何 allowedList 评审的最新立场是 CHANGES_REQUESTED(一人否决,直到重审)
+- 合并请求锁定被审批的那个 SHA——头提交变了就下周期重评
 
 面板(`npm run panel`,仅本机)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志,以及接受模式切换(切 `auto` 会要求确认):
 

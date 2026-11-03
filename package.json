@@ -15,6 +15,7 @@
     "work": "tsx src/cli.ts work",
     "panel": "tsx src/cli.ts panel",
     "watch": "tsx src/cli.ts watch",
+    "merge": "tsx src/cli.ts merge",
     "prepack": "npm run build"
   },
   "engines": {

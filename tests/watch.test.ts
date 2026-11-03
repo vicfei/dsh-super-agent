@@ -2,13 +2,14 @@ import { execSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Policy, Trigger } from "../src/domain.js";
 import { Engine } from "../src/engine.js";
 import { evaluateGate, resolveCandidate } from "../src/gate.js";
 import type { GitHubSource } from "../src/github/source.js";
 import type { SourceState } from "../src/github/state.js";
 import { Executor, type ExecutorConfig } from "../src/executor.js";
+import { GitHubClient } from "../src/github/client.js";
 import { runWatch } from "../src/watch.js";
 
 let dir: string;
@@ -105,5 +106,54 @@ describe("runWatch", () => {
     expect(engine.tickets()).toHaveLength(1);
     const assignments = engine.db.prepare("SELECT COUNT(*) c FROM assignment").get() as { c: number };
     expect(assignments.c).toBe(1);
+  });
+
+  it("auto-merge sweep runs in-cycle when policy.merge.enabled (M6-1)", async () => {
+    const head = "a".repeat(40);
+    engine.recordDelivery({ repo: "o/r", prNumber: 42, ticketId: 1, threadId: "github:o/r/issues/5", branch: "dsh/ticket-1", headSha: head });
+    const mergedBodies: unknown[] = [];
+    const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit): Promise<Response> => {
+      const u = url.toString();
+      const method = init?.method ?? "GET";
+      const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
+      if (u.endsWith("/repos/o/r/pulls/42") && method === "GET") {
+        return json({ number: 42, state: "open", draft: false, merged: false, mergeable: true, head: { ref: "dsh/ticket-1", sha: head }, additions: 10, deletions: 5 });
+      }
+      if (u.endsWith("/repos/o/r/pulls/42/reviews")) {
+        return json([{ id: 1, user: { login: "alice", type: "User" }, state: "APPROVED", commit_id: head, submitted_at: "2026-11-03T00:00:00Z" }]);
+      }
+      if (u.endsWith("/repos/o/r/pulls/42/merge") && method === "PUT") {
+        mergedBodies.push(JSON.parse(String(init.body)));
+        return json({ merged: true, sha: head });
+      }
+      if (u.endsWith("/repos/o/r/issues/5/comments") && method === "POST") return json({ id: 1 });
+      if (/git\/refs\/heads\//.test(u) && method === "DELETE") return json({});
+      throw new Error(`unexpected fetch ${method} ${u}`);
+    }) as unknown as typeof fetch;
+    const client = new GitHubClient({ token: "t0", fetchImpl });
+
+    const logs: string[] = [];
+    await runWatch({
+      engine, source: fakeSource(["empty"]), executor: echoExecutor(), client, repo: "o/r",
+      policy: { ...policy, merge: { enabled: true } }, assessment: () => "positive",
+      intervalMs: 5, cycles: 1, log: (l) => logs.push(l),
+    });
+
+    expect(mergedBodies).toEqual([{ sha: head, merge_method: "squash" }]);
+    expect(engine.deliveries()[0].state).toBe("merged");
+    expect(logs.some((l) => l.includes("[merge] #42 merged"))).toBe(true);
+    expect(logs.some((l) => l.includes("merged=1"))).toBe(true);
+  });
+
+  it("auto-merge stays a no-op when policy.merge is absent (default off)", async () => {
+    engine.recordDelivery({ repo: "o/r", prNumber: 42, ticketId: 1, threadId: "github:o/r/issues/5", branch: "dsh/ticket-1", headSha: "a" });
+    const fetchImpl = vi.fn(async () => { throw new Error("no API traffic expected"); }) as unknown as typeof fetch;
+    await runWatch({
+      engine, source: fakeSource(["empty"]), executor: echoExecutor(),
+      client: new GitHubClient({ token: "t0", fetchImpl }), repo: "o/r", policy,
+      assessment: () => "positive", intervalMs: 5, cycles: 1, log: () => {},
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(engine.openDeliveries("o/r")).toHaveLength(1);
   });
 });

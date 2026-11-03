@@ -8,6 +8,7 @@ import type { Engine } from "./engine.js";
 import type { GitHubSource } from "./github/source.js";
 import type { Executor } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
+import { runMergeSweep } from "./merge.js";
 import { classify, formatOutcome } from "./runner.js";
 import { runWork } from "./work.js";
 
@@ -65,8 +66,11 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
   const reports = await runWork(engine, executor, repo, client);
   for (const r of reports) log(`#${r.ticketId} [${r.outcome}] ${r.detail}`);
 
-  if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0) {
-    log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} worked=${reports.length}`);
+  // Auto-merge sweep (M6-1) — no-op unless policy.merge.enabled; structural brakes inside.
+  const merged = client ? await runMergeSweep(engine, client, repo, policy, (l) => log(`[merge] ${l}`)) : [];
+
+  if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0) {
+    log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} worked=${reports.length} merged=${merged.length}`);
     return true;
   }
   return false;

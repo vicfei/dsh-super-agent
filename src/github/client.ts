@@ -25,6 +25,28 @@ export interface GhPull extends GhItemBase {
   number: number;
   title: string | null;
 }
+
+/** Full pull detail for the merge gate (GET /repos/:o/:r/pulls/:n). */
+export interface GhPullDetail {
+  number: number;
+  state: "open" | "closed";
+  draft: boolean;
+  merged: boolean;
+  /** null while GitHub has not computed mergeability — treat as "not yet", fail-closed. */
+  mergeable: boolean | null;
+  head: { ref: string; sha: string };
+  additions: number;
+  deletions: number;
+}
+
+export interface GhReview {
+  id: number;
+  user: GhActor | null;
+  /** APPROVED | CHANGES_REQUESTED | COMMENTED | PENDING | DISMISSED — a reviewer's latest non-comment stance is their effective one. */
+  state: string;
+  commit_id: string;
+  submitted_at: string;
+}
 export interface GhReviewComment extends GhItemBase {
   /** api url of the parent pull. */
   pull_request_url: string;
@@ -109,5 +131,22 @@ export class GitHubClient {
   /** Delivery: turn a pushed ticket branch into a pull request. */
   createPullRequest(repo: string, pr: { title: string; head: string; base: string; body: string }): Promise<{ number: number; html_url: string }> {
     return this.request<{ number: number; html_url: string }>("POST", `/repos/${repo}/pulls`, pr);
+  }
+
+  getPull(repo: string, number: number): Promise<GhPullDetail> {
+    return this.request<GhPullDetail>("GET", `/repos/${repo}/pulls/${number}`);
+  }
+
+  listReviews(repo: string, number: number): Promise<GhReview[]> {
+    return this.request<GhReview[]>("GET", `/repos/${repo}/pulls/${number}/reviews`);
+  }
+
+  /** SHA-pinned merge: if the head moved since evaluation, GitHub rejects — we never merge unreviewed bytes. */
+  mergePullRequest(repo: string, number: number, opts: { sha: string; merge_method: "squash" | "merge" | "rebase" }): Promise<{ merged: boolean; sha?: string }> {
+    return this.request<{ merged: boolean; sha?: string }>("PUT", `/repos/${repo}/pulls/${number}/merge`, opts);
+  }
+
+  deleteBranch(repo: string, branch: string): Promise<unknown> {
+    return this.request<unknown>("DELETE", `/repos/${repo}/git/refs/heads/${branch}`);
   }
 }

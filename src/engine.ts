@@ -73,6 +73,17 @@ CREATE TABLE IF NOT EXISTS assignment (
   started_at TEXT NOT NULL, ended_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_assignment_ticket ON assignment(ticket_id);
+
+CREATE TABLE IF NOT EXISTS delivery (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  repo TEXT NOT NULL, pr_number INTEGER NOT NULL,
+  ticket_id INTEGER NOT NULL, thread_id TEXT NOT NULL,
+  branch TEXT NOT NULL, head_sha TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'open', -- open | merged | closed
+  opened_at TEXT NOT NULL, merged_at TEXT, updated_at TEXT NOT NULL,
+  UNIQUE(repo, pr_number)
+);
+CREATE INDEX IF NOT EXISTS idx_delivery_state ON delivery(state);
 `;
 
 export interface IngestItem {
@@ -111,6 +122,20 @@ export interface EffectRow {
   key: string;
   payload: unknown;
   attempts: number;
+}
+
+/** A PR the agent opened for a ticket — the auto-merge sweep's work list (M6-1). */
+export interface DeliveryView {
+  id: number;
+  repo: string;
+  prNumber: number;
+  ticketId: number;
+  threadId: string;
+  branch: string;
+  headSha: string;
+  state: "open" | "merged" | "closed";
+  openedAt: string;
+  mergedAt?: string;
 }
 
 export interface DecisionView {
@@ -356,6 +381,35 @@ export class Engine {
       .run(key, JSON.stringify({ threadId, issueNumber: n ? Number(n[2]) : null, body }), now, now, now);
   }
 
+  // ── deliveries (M6-1: PRs the agent opened — the auto-merge sweep's work list) ──
+
+  /** Record (or re-open on re-delivery) the PR opened for a ticket. */
+  recordDelivery(d: { repo: string; prNumber: number; ticketId: number; threadId: string; branch: string; headSha: string }): void {
+    const now = new Date().toISOString();
+    this.db.prepare(`INSERT INTO delivery (repo, pr_number, ticket_id, thread_id, branch, head_sha, state, opened_at, updated_at)
+      VALUES (@repo, @prNumber, @ticketId, @threadId, @branch, @headSha, 'open', @now, @now)
+      ON CONFLICT(repo, pr_number) DO UPDATE SET branch = excluded.branch, head_sha = excluded.head_sha,
+        state = 'open', merged_at = NULL, updated_at = excluded.updated_at`)
+      .run({ ...d, now });
+  }
+
+  openDeliveries(repo: string): DeliveryView[] {
+    const rows = this.db.prepare("SELECT * FROM delivery WHERE repo = ? AND state = 'open' ORDER BY id").all(repo) as Record<string, unknown>[];
+    return rows.map(toDeliveryView);
+  }
+
+  finishDelivery(id: number, state: "merged" | "closed"): boolean {
+    const r = this.db
+      .prepare("UPDATE delivery SET state = ?, merged_at = CASE WHEN ? = 'merged' THEN ? ELSE merged_at END, updated_at = ? WHERE id = ? AND state = 'open'")
+      .run(state, state, new Date().toISOString(), new Date().toISOString(), id);
+    return r.changes > 0;
+  }
+
+  deliveries(limit = 30): DeliveryView[] {
+    const rows = this.db.prepare("SELECT * FROM delivery ORDER BY id DESC LIMIT ?").all(limit) as Record<string, unknown>[];
+    return rows.map(toDeliveryView);
+  }
+
   // ── views ────────────────────────────────────────────────────────────────
 
   /** Recent decisions with trigger context — the audit trail (panel + observe records). */
@@ -449,8 +503,22 @@ export class Engine {
   }
 }
 
-function replyPayload(t: Trigger, ticketId: number, verb: "opened" | "resumed", strength: Strength): unknown {
-  const n = t.threadId.match(/\/(issues|pulls)\/(\d+)$/);
+function toDeliveryView(r: Record<string, unknown>): DeliveryView {
+  return {
+    id: Number(r.id),
+    repo: String(r.repo),
+    prNumber: Number(r.pr_number),
+    ticketId: Number(r.ticket_id),
+    threadId: String(r.thread_id),
+    branch: String(r.branch),
+    headSha: String(r.head_sha),
+    state: r.state as DeliveryView["state"],
+    openedAt: String(r.opened_at),
+    ...(r.merged_at !== null ? { mergedAt: String(r.merged_at) } : {}),
+  };
+}
+
+function replyPayload(t: Trigger, ticketId: number, verb: "opened" | "resumed", strength: Strength): unknown {  const n = t.threadId.match(/\/(issues|pulls)\/(\d+)$/);
   return {
     threadId: t.threadId,
     issueNumber: n ? Number(n[2]) : null,

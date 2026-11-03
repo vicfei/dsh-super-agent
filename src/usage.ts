@@ -16,6 +16,7 @@ Commands:
   watch     poll + work + panel as one daemon (Ctrl-C stops after the current cycle)
   tickets   list tickets; "tickets stop <id>" ends one
   panel     serve the awaiting-human panel (http://127.0.0.1:8787)
+  merge     sweep open ticket PRs — merge those meeting policy.merge requirements (default off)
   help      show this usage
 
 Common options:

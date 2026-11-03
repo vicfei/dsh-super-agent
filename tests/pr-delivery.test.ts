@@ -114,6 +114,12 @@ describe("PR delivery loop", () => {
     expect(report).toBeDefined();
     expect(report).toContain("https://github.com/o/r/pull/42");
     expect(report).toContain("automated agent");
+    // the delivery is recorded for the auto-merge sweep: PR number + the exact pushed SHA
+    const dels = engine.openDeliveries("o/r");
+    expect(dels).toHaveLength(1);
+    expect(dels[0]).toMatchObject({ prNumber: 42, ticketId: 1, branch: "dsh/ticket-1", threadId: "github:o/r/issues/5" });
+    const tipSha = execSync(`git -C ${JSON.stringify(originGit)} rev-parse dsh/ticket-1`).toString().trim();
+    expect(dels[0].headSha).toBe(tipSha);
   });
 
   it("no new commits → no push, no PR, plain done report", async () => {
@@ -121,6 +127,7 @@ describe("PR delivery loop", () => {
     const reports = await runWork(engine, executorWith("echo read-only work"), "o/r", client);
     expect(reports[0]).toMatchObject({ outcome: "done", detail: "exit 0" });
     expect(createdPRs).toHaveLength(0);
+    expect(engine.openDeliveries("o/r")).toHaveLength(0);
     expect(execSync(`git -C ${JSON.stringify(originGit)} branch --list dsh/ticket-*`).toString().trim()).toBe("");
   });
 

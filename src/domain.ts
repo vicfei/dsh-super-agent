@@ -66,6 +66,40 @@ export interface Policy {
   acceptMode: AcceptMode;
   /** One row per scope; a missing row means all cells "ignore". */
   table: AdmissionRow[];
+  /** Delivery-side brakes for auto-merge (M6). Absent = disabled — nothing merges by default. */
+  merge?: Partial<MergePolicy>;
+}
+
+/**
+ * Structural merge brakes (docs/ROADMAP M6): every condition is a checkable fact about the PR,
+ * never model judgment — fail-closed, each miss recorded as a reason.
+ */
+export interface MergePolicy {
+  /** Auto-merge is opt-in; false means the sweep only reports. */
+  enabled: boolean;
+  /** An approval counts only if its commit_id equals the PR head SHA (stale approvals never merge). */
+  requireApprovalCoveringHead: boolean;
+  /** additions + deletions above this never merge. */
+  maxChangedLines: number;
+  /** Merge method for the SHA-pinned merge PUT. */
+  method: "squash" | "merge" | "rebase";
+  /** Delete the `dsh/ticket-N` branch after a successful merge. */
+  deleteBranch: boolean;
+}
+
+export function defaultMergePolicy(): MergePolicy {
+  return {
+    enabled: false,
+    requireApprovalCoveringHead: true,
+    maxChangedLines: 200,
+    method: "squash",
+    deleteBranch: true,
+  };
+}
+
+/** Policy.merge is partial in the config file; fill the rest from defaults. */
+export function mergePolicyOf(policy: Policy): MergePolicy {
+  return { ...defaultMergePolicy(), ...(policy.merge ?? {}) };
 }
 
 export function defaultRow(scope: Scope): AdmissionRow {

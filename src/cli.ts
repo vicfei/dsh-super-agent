@@ -3,7 +3,7 @@
 // report → drain), tickets (list / stop). Token and API keys come from the environment only.
 
 import { parseArgs } from "node:util";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { Policy } from "./domain.js";
 import { Engine } from "./engine.js";
@@ -61,7 +61,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -223,6 +223,21 @@ try {
       console.log(`slack: socket-mode source armed${botUserId ? ` (@mention detection for <@${botUserId}>)` : ""}`);
     }
 
+    // WeChat (v0.8 M8-4): armed when `wechat-login` stored credentials in this db.
+    {
+      const { WechatSource, WechatReplyChannel, WechatApiClient, EngineWechatStore } = await import("./wechat.js");
+      const wechatStore = new EngineWechatStore(engine);
+      if (wechatStore.loadAuth()) {
+        sources.push(new WechatSource({ store: wechatStore, log: (l) => console.log(l) }));
+        channels.push(new WechatReplyChannel(
+          wechatStore,
+          (auth) => new WechatApiClient({ token: auth.token, baseUrl: auth.baseUrl }),
+          (l) => console.log(l),
+        ));
+        console.log("wechat: iLink long-poll source armed (DMs addressed; groups fail closed)");
+      }
+    }
+
     await runWatch({
       engine,
       sources,
@@ -276,6 +291,21 @@ try {
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
     await new Promise<never>(() => {}); // serve until signal — the finally-close must not run
+  } else if (command === "wechat-login") {
+    // iLink Bot Protocol QR login (v0.8 M8-4): the human scans with their WeChat app.
+    const { wechatLogin, EngineWechatStore } = await import("./wechat.js");
+    const store = new EngineWechatStore(engine);
+    const creds = await wechatLogin((qr) => {
+      if (qr.imgBase64) {
+        const file = `${process.cwd()}/wechat-login-qr.png`;
+        writeFileSync(file, Buffer.from(qr.imgBase64, "base64"));
+        console.log(`[wechat] QR image saved to ${file} — scan it with WeChat, then confirm on your phone`);
+      } else {
+        console.log(`[wechat] no image payload from the server (qrcode id ${qr.qrcode})`);
+      }
+    });
+    store.saveAuth(creds);
+    console.log("[wechat] logged in — credentials stored; the watch daemon (same --db) arms the source automatically");
   } else if (command === "merge") {
     // One-shot version of the watch cycle's auto-merge sweep (cron-friendly).
     if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);

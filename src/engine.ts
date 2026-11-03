@@ -214,6 +214,20 @@ export class Engine {
     return row ? (JSON.parse(row.v) as Policy) : undefined;
   }
 
+  /** Generic kv for channel state (wechat credentials/cursor/routes — v0.8). */
+  kvGet(key: string): string | null {
+    const row = this.db.prepare("SELECT v FROM kv WHERE k = ?").get(key) as { v: string } | undefined;
+    return row?.v ?? null;
+  }
+
+  kvSet(key: string, value: string): void {
+    this.db.prepare("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(key, value);
+  }
+
+  kvDelete(key: string): void {
+    this.db.prepare("DELETE FROM kv WHERE k = ?").run(key);
+  }
+
   /** Per-source read state (v0.8): each Source's positions live under `positions:<kind>`;
    * v0.7 databases kept one unnamed blob — that was GitHub's, so it migrates on first read. */
   sourceState(source: string): SourceState {

@@ -1,0 +1,352 @@
+// WeChat channel (v0.8 M8-4, issue #45) — the iLink Bot Protocol: an HTTP, Telegram-bot-shaped
+// API on WeChat's own domain (ilinkai.weixin.qq.com), documented at wechatbot.dev/zh/protocol
+// and mirrored by the wire types of weixin-agent-sdk (derived from @tencent-weixin/openclaw-weixin).
+// Zero reverse-engineering: QR login → bot_token, long-poll getupdates with an opaque cursor,
+// sendmessage echoing the per-peer context_token. Text-first; media/AES is a later slice.
+//
+// Persistence is injected (Engine kv in production, in-memory in tests): credentials, the
+// getupdates cursor, and per-thread reply routes {toUserId, groupId, sessionId, contextToken}.
+
+import { randomBytes } from "node:crypto";
+import type { Trigger } from "./domain.js";
+import type { ReplyChannel, Source, SourceState } from "./source.js";
+
+export const WECHAT_DEFAULT_BASE = "https://ilinkai.weixin.qq.com";
+
+// ── wire types (subset we consume; field names mirror the protocol) ────────────
+
+export interface WeixinMessage {
+  message_id?: string;
+  seq?: number;
+  from_user_id?: string;
+  to_user_id?: string;
+  session_id?: string;
+  group_id?: string;
+  /** 1 = USER, 2 = BOT. */
+  message_type?: number;
+  create_time_ms?: number;
+  item_list?: { type?: number; text_item?: { text?: string } }[];
+  context_token?: string;
+}
+
+export interface GetUpdatesResp {
+  ret?: number;
+  errcode?: number;
+  errmsg?: string;
+  msgs?: WeixinMessage[];
+  get_updates_buf?: string;
+}
+
+export interface SendMessageResp {
+  ret?: number;
+  errmsg?: string;
+  message_id?: string;
+}
+
+// ── persisted state ─────────────────────────────────────────────────────────────
+
+export interface WechatAuth {
+  token: string;
+  baseUrl: string;
+}
+
+export interface WechatRoute {
+  toUserId: string;
+  groupId?: string;
+  sessionId?: string;
+  contextToken: string;
+}
+
+export interface WechatStore {
+  loadAuth(): WechatAuth | null;
+  saveAuth(auth: WechatAuth): void;
+  loadCursor(): string;
+  saveCursor(buf: string): void;
+  loadRoute(threadId: string): WechatRoute | null;
+  saveRoute(threadId: string, route: WechatRoute): void;
+  /** Session expired (-14): drop everything, a new QR scan is required. */
+  clearAll(): void;
+}
+
+export class MemoryWechatStore implements WechatStore {
+  private auth: WechatAuth | null = null;
+  private cursor = "";
+  private readonly routes = new Map<string, WechatRoute>();
+  loadAuth() { return this.auth; }
+  saveAuth(auth: WechatAuth) { this.auth = auth; }
+  loadCursor() { return this.cursor; }
+  saveCursor(buf: string) { this.cursor = buf; }
+  loadRoute(threadId: string) { return this.routes.get(threadId) ?? null; }
+  saveRoute(threadId: string, route: WechatRoute) { this.routes.set(threadId, route); }
+  clearAll() { this.auth = null; this.cursor = ""; this.routes.clear(); }
+}
+
+/** Production store over the engine's kv (same db as the tickets — one backup story). */
+export class EngineWechatStore implements WechatStore {
+  constructor(private readonly kv: { kvGet(k: string): string | null; kvSet(k: string, v: string): void; kvDelete(k: string): void }) {}
+
+  loadAuth(): WechatAuth | null {
+    try {
+      const raw = this.kv.kvGet("wechat_auth");
+      return raw ? (JSON.parse(raw) as WechatAuth) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  saveAuth(auth: WechatAuth): void {
+    this.kv.kvSet("wechat_auth", JSON.stringify(auth));
+  }
+
+  loadCursor(): string {
+    return this.kv.kvGet("wechat_cursor") ?? "";
+  }
+
+  saveCursor(buf: string): void {
+    this.kv.kvSet("wechat_cursor", buf);
+  }
+
+  loadRoute(threadId: string): WechatRoute | null {
+    try {
+      const raw = this.kv.kvGet(`wechat_route:${threadId}`);
+      return raw ? (JSON.parse(raw) as WechatRoute) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  saveRoute(threadId: string, route: WechatRoute): void {
+    this.kv.kvSet(`wechat_route:${threadId}`, JSON.stringify(route));
+    const index = new Set((this.kv.kvGet("wechat_route_index") ?? "").split("\n").filter(Boolean));
+    index.add(threadId);
+    this.kv.kvSet("wechat_route_index", [...index].join("\n"));
+  }
+
+  clearAll(): void {
+    // route keys are namespaced; policy/positions keys are unaffected
+    this.kv.kvGet("wechat_route_index")?.split("\n").filter(Boolean).forEach((k) => this.kv.kvDelete(`wechat_route:${k}`));
+    this.kv.kvSet("wechat_route_index", "");
+    this.kv.kvDelete("wechat_auth");
+    this.kv.kvDelete("wechat_cursor");
+  }
+}
+
+// ── API client ──────────────────────────────────────────────────────────────────
+
+/** X-WECHAT-UIN: random uint32 → decimal string → base64, fresh per request. */
+function randomWechatUin(): string {
+  return Buffer.from(String(randomBytes(4).readUInt32BE(0) >>> 0)).toString("base64");
+}
+
+const BOT_AGENT = "dsh-super-agent/0.8.0";
+
+export interface WechatClientOptions {
+  token: string;
+  baseUrl?: string;
+  apiBase?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export class WechatApiClient {
+  private readonly fetchImpl: typeof fetch;
+  private readonly base: string;
+  private readonly token: string;
+
+  constructor(opts: WechatClientOptions) {
+    this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.base = (opts.baseUrl ?? opts.apiBase ?? WECHAT_DEFAULT_BASE).replace(/\/$/, "");
+    this.token = opts.token;
+  }
+
+  private async post<T>(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+    const res = await this.fetchImpl(`${this.base}/${path}`, {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/json",
+        AuthorizationType: "ilink_bot_token",
+        Authorization: `Bearer ${this.token}`,
+        "X-WECHAT-UIN": randomWechatUin(),
+      },
+      body: JSON.stringify({ ...body, base_info: { channel_version: "2.0.0", bot_agent: BOT_AGENT } }),
+    });
+    if (!res.ok) throw new Error(`wechat ${path} → HTTP ${res.status}`);
+    return (await res.json()) as T;
+  }
+
+  getUpdates(getUpdatesBuf: string, signal?: AbortSignal): Promise<GetUpdatesResp> {
+    return this.post<GetUpdatesResp>("ilink/bot/getupdates", { get_updates_buf: getUpdatesBuf }, signal);
+  }
+
+  sendMessage(msg: WeixinMessage): Promise<SendMessageResp> {
+    return this.post<SendMessageResp>("ilink/bot/sendmessage", { msg });
+  }
+}
+
+// ── login (terminal QR) ─────────────────────────────────────────────────────────
+
+export interface QrPayload {
+  qrcode: string;
+  imgBase64: string;
+}
+
+/**
+ * QR login flow: fetch a QR (the caller renders/saves the image — it must be scanned by the
+ * human's WeChat app), long-poll status until confirmed, return credentials.
+ */
+export async function wechatLogin(
+  onQr: (qr: QrPayload) => void,
+  opts: { apiBase?: string; fetchImpl?: typeof fetch; pollMs?: number } = {},
+): Promise<WechatAuth> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const base = (opts.apiBase ?? WECHAT_DEFAULT_BASE).replace(/\/$/, "");
+  const headers = {
+    "content-type": "application/json",
+    AuthorizationType: "ilink_bot_token",
+    "X-WECHAT-UIN": randomWechatUin(),
+  };
+  const qrRes = await fetchImpl(`${base}/ilink/bot/get_bot_qrcode?bot_type=3`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ local_token_list: [] }),
+  });
+  if (!qrRes.ok) throw new Error(`wechat get_bot_qrcode → HTTP ${qrRes.status}`);
+  const qr = (await qrRes.json()) as { qrcode?: string; qrcode_img_content?: string };
+  if (!qr.qrcode) throw new Error("wechat get_bot_qrcode returned no qrcode");
+  onQr({ qrcode: qr.qrcode, imgBase64: qr.qrcode_img_content ?? "" });
+
+  for (;;) {
+    await new Promise((r) => setTimeout(r, opts.pollMs ?? 2000));
+    const stRes = await fetchImpl(`${base}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qr.qrcode)}`, { headers });
+    if (!stRes.ok) throw new Error(`wechat get_qrcode_status → HTTP ${stRes.status}`);
+    const st = (await stRes.json()) as { status?: string; bot_token?: string; baseurl?: string };
+    if (st.status === "confirmed" && st.bot_token) {
+      return { token: st.bot_token, baseUrl: st.baseurl ?? base };
+    }
+    if (st.status === "expired") throw new Error("wechat QR expired — run wechat-login again");
+    // wait | scaned → keep polling
+  }
+}
+
+// ── trigger mapping ─────────────────────────────────────────────────────────────
+
+/** threadId for a message: groups are threads; a DM peer is a thread. */
+export function wechatThreadId(m: WeixinMessage): string {
+  return m.group_id ? `wechat:group/${m.group_id}` : `wechat:peer/${m.from_user_id ?? "unknown"}`;
+}
+
+export function wechatTriggerFromMessage(m: WeixinMessage): Trigger | null {
+  if (m.message_type === 2) return null; // BOT traffic (incl. our own) — never a work request
+  if (!m.message_id && m.seq === undefined) return null;
+  const firstText = m.item_list?.find((i) => i.type === 1)?.text_item?.text;
+  const anyItem = m.item_list?.[0];
+  const body = firstText ?? (anyItem?.type !== undefined && anyItem.type !== 1 ? `[${anyItem.type}]` : "");
+  const isGroup = m.group_id !== undefined;
+  return {
+    id: `wechat:msg/${m.message_id ?? `seq-${m.seq}`}`,
+    source: "wechat",
+    scope: isGroup ? "im_group" : "im_dm",
+    threadId: wechatThreadId(m),
+    author: { login: m.from_user_id ?? "unknown", isBot: false }, // message_type 2 already excluded
+    // DMs are inherently addressed; group @mention text format is not reliably parseable in
+    // this protocol — fail closed (allowed-list members still produce inferred).
+    addressing: !isGroup,
+    body,
+    ts: m.create_time_ms ? new Date(m.create_time_ms).toISOString() : new Date().toISOString(),
+  };
+}
+
+// ── Source ──────────────────────────────────────────────────────────────────────
+
+export interface WechatSourceOptions {
+  store: WechatStore;
+  /** Abort the long-poll after this many ms so a watch cycle is never blocked (default 8s). */
+  pollTimeoutMs?: number;
+  apiBase?: string;
+  fetchImpl?: typeof fetch;
+  log?: (l: string) => void;
+}
+
+export class WechatSource implements Source {
+  readonly kind = "wechat" as const;
+  private warnedNoAuth = false;
+
+  constructor(private readonly opts: WechatSourceOptions) {}
+
+  async collect(from: SourceState, opts: { exclude?: ReadonlySet<string> } = {}): Promise<{ triggers: Trigger[]; next: SourceState }> {
+    const auth = this.opts.store.loadAuth();
+    if (!auth) {
+      if (!this.warnedNoAuth) {
+        this.warnedNoAuth = true;
+        this.opts.log?.("[wechat] not logged in — run `wechat-login` with the same --db to arm this source");
+      }
+      return { triggers: [], next: from };
+    }
+    const client = new WechatApiClient({ token: auth.token, baseUrl: auth.baseUrl, ...(this.opts.apiBase ? { apiBase: this.opts.apiBase } : {}), ...(this.opts.fetchImpl ? { fetchImpl: this.opts.fetchImpl } : {}) });
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), this.opts.pollTimeoutMs ?? 8000);
+    let resp: GetUpdatesResp;
+    try {
+      resp = await client.getUpdates(this.opts.store.loadCursor(), abort.signal);
+    } catch (e) {
+      if (abort.signal.aborted) return { triggers: [], next: from }; // long-poll cut short by our own timeout — lossless, the cursor hasn't moved
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (resp.ret === 0) {
+      if (resp.get_updates_buf) this.opts.store.saveCursor(resp.get_updates_buf);
+      const triggers: Trigger[] = [];
+      for (const m of resp.msgs ?? []) {
+        // remember how to reply into this thread — the context_token is the routing key
+        if (m.from_user_id && m.context_token) {
+          this.opts.store.saveRoute(wechatThreadId(m), {
+            toUserId: m.from_user_id,
+            ...(m.group_id ? { groupId: m.group_id } : {}),
+            ...(m.session_id ? { sessionId: m.session_id } : {}),
+            contextToken: m.context_token,
+          });
+        }
+        const t = wechatTriggerFromMessage(m);
+        if (t && !opts.exclude?.has(t.id)) triggers.push(t);
+      }
+      return { triggers, next: from };
+    }
+    if (resp.errcode === -14 || resp.ret === -14) {
+      this.opts.store.clearAll();
+      this.opts.log?.("[wechat] session expired (-14) — state cleared, run `wechat-login` again");
+      return { triggers: [], next: from };
+    }
+    throw new Error(`wechat getupdates ret=${resp.ret} errcode=${resp.errcode ?? "-"}: ${resp.errmsg ?? ""}`.trim());
+  }
+}
+
+// ── ReplyChannel ────────────────────────────────────────────────────────────────
+
+export class WechatReplyChannel implements ReplyChannel {
+  constructor(
+    private readonly store: WechatStore,
+    private readonly clientOf: (auth: WechatAuth) => WechatApiClient,
+    private readonly log: (l: string) => void = () => {},
+  ) {}
+
+  matches(threadId: string): boolean {
+    return threadId.startsWith("wechat:");
+  }
+
+  async deliver(threadId: string, body: string): Promise<{ externalId: string }> {
+    const auth = this.store.loadAuth();
+    const route = this.store.loadRoute(threadId);
+    if (!auth || !route) throw new Error(`no wechat route for thread ${threadId} (not logged in, or the thread never sent us a message)`);
+    const resp = await this.clientOf(auth).sendMessage({
+      to_user_id: route.toUserId,
+      ...(route.groupId ? { group_id: route.groupId } : {}),
+      ...(route.sessionId ? { session_id: route.sessionId } : {}),
+      message_type: 2, // BOT
+      item_list: [{ type: 1, text_item: { text: body } }],
+      context_token: route.contextToken, // "回复时必须原样回传" — routes the reply
+    });
+    if (resp.ret !== 0) throw new Error(`wechat sendmessage ret=${resp.ret}: ${resp.errmsg ?? ""}`.trim());
+    return { externalId: `msg/${resp.message_id ?? "unknown"}` };
+  }
+}

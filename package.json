@@ -1,7 +1,7 @@
 {
   "name": "@vicfei/dsh-super-agent",
   "version": "0.7.0",
-  "description": "Admission control, observe mode & tickets for any CLI coding agent \u2014 independent implementation of the DeepSeek Super-agent design",
+  "description": "Admission control, observe mode & tickets for any CLI coding agent — independent implementation of the DeepSeek Super-agent design",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vicfei/dsh-super-agent.git"
@@ -28,6 +28,7 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.76.0",
     "better-sqlite3": "^12.11.1"
   },
   "main": "dist/index.js",

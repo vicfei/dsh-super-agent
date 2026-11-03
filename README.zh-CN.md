@@ -137,6 +137,8 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 2. 安装到你的仓库,然后设环境变量:`GITHUB_APP_ID`、`GITHUB_APP_PRIVATE_KEY`(PEM 内容,`\n` 转义——或 `GITHUB_APP_PRIVATE_KEY_PATH` 指文件)、可选 `GITHUB_APP_INSTALLATION_ID`(省略时从 `--repo` 自动发现)
 3. 照常运行——启动会打一行 `auth: GitHub App …`。优先级:`--token` 参数 > App 环境变量 > `GITHUB_TOKEN`;分支推送走 https 时用同一凭证(ssh remote 继续用你的 ssh key)
 
+**飞书通道(v0.8)。** 设置 `FEISHU_APP_ID` + `FEISHU_APP_SECRET` 后,`watch` 同时监听飞书。一次性配置:在 [open.feishu.cn/app](https://open.feishu.cn/app) 建自建应用,开启**机器人**能力,订阅 `im.message.receive_v1` 并选**长连接**模式(无需公网回调),授予 `im:message` 权限。此后私聊和群内 @提及走同一张准许表(`im_dm` / `im_group` 行——表保持数据化),工单走同一执行回路,回复自动发回会话。配置 `FEISHU_BOT_OPEN_ID` 可精确判定群内 @提及;不配则群消息永不视为 addressing(失败关闭——allowedList 成员仍可经 `listedNotAddressing` 格产生 inferred)。
+
 面板(`npm run panel`,仅本机)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志,以及接受模式切换(切 `auto` 会要求确认):
 
 ## 对比

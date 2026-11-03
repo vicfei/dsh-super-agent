@@ -13,6 +13,7 @@ import type { Assessor } from "./assess.js";
 import { llmAssessor, stubAssessor } from "./assess.js";
 import { GitHubClient } from "./github/client.js";
 import { AppTokenProvider, appAuthFromEnv } from "./github/app-auth.js";
+import type { ReplyChannel, Source } from "./source.js";
 import { GitHubSource } from "./github/source.js";
 import { Executor, type ExecutorConfig } from "./executor.js";
 import { GitHubReplyChannel, runWork } from "./work.js";
@@ -195,10 +196,26 @@ try {
     console.log(`watch: polling ${args.repo} every ${args.interval ?? 30}s (±20% jitter) — Ctrl-C stops after the current cycle`);
 
     const { runWatch } = await import("./watch.js");
+    const sources: Source[] = [new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client })];
+    const channels: ReplyChannel[] = authenticated ? [new GitHubReplyChannel(client, args.repo!)] : [];
+
+    // Feishu (v0.8 M8-2): armed by env — self-built app, WebSocket long connection, no public URL.
+    const feishuId = process.env.FEISHU_APP_ID;
+    const feishuSecret = process.env.FEISHU_APP_SECRET;
+    if (feishuId && feishuSecret) {
+      const { FeishuSource, FeishuReplyChannel, createFeishuSender } = await import("./feishu.js");
+      sources.push(new FeishuSource({
+        appId: feishuId, appSecret: feishuSecret,
+        ...(process.env.FEISHU_BOT_OPEN_ID ? { botOpenId: process.env.FEISHU_BOT_OPEN_ID } : {}),
+      }));
+      channels.push(new FeishuReplyChannel(await createFeishuSender(feishuId, feishuSecret)));
+      console.log("feishu: long-connection source armed (im.message.receive_v1) — set FEISHU_BOT_OPEN_ID for precise group @mention detection");
+    }
+
     await runWatch({
       engine,
-      sources: [new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client })],
-      channels: authenticated ? [new GitHubReplyChannel(client, args.repo!)] : [],
+      sources,
+      channels,
       executor: new Executor(execCfg),
       client: authenticated ? client : null,
       repo: args.repo!,

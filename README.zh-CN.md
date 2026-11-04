@@ -77,7 +77,9 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | GitHub App 认证——installation token 每小时轮换、bot 身份;按人分阶段面板 | ✅ v0.6 |
 | 飞书 / Slack / 微信 / Telegram 通道——同一张准许表,同一回路(`im_dm` / `im_group`) | ✅ v0.8 |
 | Watchdog——滞留工作问询 + needs-person 提醒,各一次,永不碰准入 | ✅ v0.9 |
-| IM 远程审批面(手机上批准) | 设计中——见 [docs/designs/im-approval-surface.md](docs/designs/im-approval-surface.md) |
+| IM 远程审批面——ops 私聊里的数字处置待决事项(双确认、时效、回执) | ✅ v1.1——[设计](docs/designs/im-approval-surface.md) |
+
+**IM 远程审批面(v1.1)。** 人的审批面,装进口袋——按[设计文档](docs/designs/im-approval-surface.md)实现。开启 `policy.approval` 后,allowedList 成员首次 IM 私聊 bot 即注册其 **ops 线程**;待决事项送达该线程,**单个数字**即处置:needs-person 工单(`1` 重新排队 · `2` 停止 · `3` 详情)与预演完成的投机工单(`1` promote——交付闸 · `2` 丢弃 · `3` 详情)。防误触是结构性的:仅全等单数字、**破坏性操作双确认**(5 分钟内第二个 `2`)、60 分钟时效、每线程 newest-wins 单 pending、每个动作都有回执——以及两条设计上的硬边界:**GitHub 合并审批永远留在 GitHub**(身份是结构性的),审批面永远改不了策略、开不了工。群里的数字、陌生人的数字、带字的数字,都只是聊天。
 
 ## 文章概念逐条对照
 

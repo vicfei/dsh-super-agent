@@ -8,6 +8,7 @@ import type { Engine } from "./engine.js";
 import type { ReplyChannel, Source, SourceState } from "./source.js";
 import type { Executor } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
+import { interceptApprovalCommands, runApprovalSweep } from "./approval.js";
 import { evaluateGate } from "./gate.js";
 import { runMergeSweep } from "./merge.js";
 import { runWatchdogSweep } from "./watchdog.js";
@@ -79,7 +80,10 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
   for (const source of opts.sources) {
     const { triggers, next } = await source.collect(engine.sourceState(source.kind), { exclude: engine.selfPosted() });
     nextBySource[source.kind] = next;
-    for (const t of triggers) batch.push(classify(t, policy, await assess(t)));
+    // v1.1: digits in ops threads resolve pending approvals BEFORE anything is ticketed
+    const { rest, applied } = interceptApprovalCommands(triggers, engine, policy);
+    for (const a of applied) log(`[approval] ${a}`);
+    for (const t of rest) batch.push(classify(t, policy, await assess(t)));
   }
   for (const outcome of batch) log(formatOutcome(outcome));
   const report = engine.ingest(batch, nextBySource);
@@ -94,10 +98,13 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
   // v1.0 deliver gate: promoted speculative work gets delivered (person-authorized).
   const promoted = client ? await runPromoteSweep(engine, executor, client, repo, channels, (l) => log(`[promote] ${l}`)) : 0;
 
+  // v1.1 approval surface: render requests for pending decisions into ops threads.
+  const approvals = await runApprovalSweep(engine, policy, channels, (l) => log(`[approval] ${l}`));
+
   // Watchdog sweep (v0.9-1) — no-op unless policy.watchdog.enabled; observes, never admits.
   const watched = await runWatchdogSweep(engine, policy, channels, { log: (l) => log(`[watchdog] ${l}`) });
 
-  if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0 || watched.length > 0 || promoted > 0) {
+  if (batch.length > 0 || reports.length > 0 || report.refusals.length > 0 || merged.length > 0 || watched.length > 0 || promoted > 0 || approvals > 0) {
     log(`— cycle: fresh=${report.fresh} opened=${report.ticketsOpened} resumed=${report.resumed} joined=${report.joined} spec=${report.speculative} worked=${reports.length} merged=${merged.length} promoted=${promoted} nudged=${watched.length}`);
     return true;
   }

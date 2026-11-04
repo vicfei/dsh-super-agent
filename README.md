@@ -77,7 +77,9 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | GitHub App auth — hourly installation tokens, bot identity; person-stages panel | ✅ v0.6 |
 | Feishu / Slack / WeChat / Telegram channels — same admission table, same loop (`im_dm` / `im_group`) | ✅ v0.8 |
 | Watchdog — stuck-work nudge & needs-person reminder, one each, never admits | ✅ v0.9 |
-| IM remote approval surface (approve from your phone) | design — see [docs/designs/im-approval-surface.md](docs/designs/im-approval-surface.md) |
+| IM remote approval surface — digits in the ops DM resolve pending decisions (double-key, expiry, receipts) | ✅ v1.1 — [design](docs/designs/im-approval-surface.md) |
+
+**IM remote approval surface (v1.1).** The human approval surface, pocket-sized — implemented per [the design](docs/designs/im-approval-surface.md). With `policy.approval` enabled, an allowed-list member's first IM DM to the bot registers their **ops thread**; pending decisions arrive there and a **single digit** resolves them: needs-person tickets (`1` requeue · `2` stop · `3` detail) and finished speculative rehearsals (`1` promote — the deliver gate · `2` discard · `3` detail). Anti-mistouch is structural: whole-body digit shape only, **double-key for destructive acts** (a second `2` within 5 minutes), 60-minute expiry, newest-wins single pending per thread, a receipt for every applied action — and two hard non-goals by design: **GitHub merge approvals stay on GitHub** (that identity is structural), and the surface can never change policy or create work. Digits in groups, from strangers, or attached to words are just chat.
 
 ## The article's checklist, one by one
 

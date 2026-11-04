@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS ticket (
   state TEXT NOT NULL DEFAULT 'open', -- open | ended
   speculative INTEGER NOT NULL DEFAULT 0, -- 1 = rehearsing silently; deliver needs a human promote
   promoted_at TEXT,
+  requeued_at TEXT,
   stopped_by TEXT, stopped_at TEXT,
   revoked_reason TEXT,
   resumed_count INTEGER NOT NULL DEFAULT 0,
@@ -95,6 +96,18 @@ CREATE TABLE IF NOT EXISTS ticket_followup (
   UNIQUE(ticket_id, trigger_id)
 );
 CREATE INDEX IF NOT EXISTS idx_followup_ticket ON ticket_followup(ticket_id);
+
+CREATE TABLE IF NOT EXISTS approval_request (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ops_thread TEXT NOT NULL,
+  ticket_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,               -- needs-person | speculative
+  created_at TEXT NOT NULL,
+  confirm_at TEXT,                  -- double-key armed for a destructive act
+  resolved_at TEXT,
+  superseded_by INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_approval_thread ON approval_request(ops_thread);
 
 CREATE TABLE IF NOT EXISTS spill (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -312,6 +325,12 @@ export class Engine {
         }
         report.fresh++;
 
+        // v1.1 approval surface: an allowed member's IM DM thread becomes their ops thread —
+        // identity registration, independent of the decision that follows.
+        if (t.scope === "im_dm" && !t.author.isBot && policy?.allowedList.some((a) => a.toLowerCase() === t.author.login.toLowerCase())) {
+          this.registerOpsThread(t.author.login, t.threadId);
+        }
+
         const kind = item.resolution.action === "accept" ? "accept"
           : item.resolution.action === "shadow" ? "ignore" : "ignore";
         const strength = item.gate.strength ?? null;
@@ -403,6 +422,75 @@ export class Engine {
     return undefined;
   }
 
+  // ── IM approval surface (v1.1, #76) ───────────────────────────────────────
+
+  /** login → ops DM thread (kv). The approval surface routes requests and digits here. */
+  registerOpsThread(login: string, threadId: string): void {
+    const routes = this.opsRoutes();
+    routes[login.toLowerCase()] = threadId;
+    this.kvSet("approval_routes", JSON.stringify(routes));
+  }
+
+  opsRoutes(): Record<string, string> {
+    try {
+      return JSON.parse(this.kvGet("approval_routes") ?? "{}") as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }
+
+  /** The owner's login for a registered ops thread (identity check for digits). */
+  opsThreadLogin(threadId: string): string | null {
+    for (const [login, tid] of Object.entries(this.opsRoutes())) if (tid === threadId) return login;
+    return null;
+  }
+
+  firstOpsThread(): string | null {
+    const routes = Object.values(this.opsRoutes());
+    return routes.length > 0 ? routes[0] : null;
+  }
+
+  /** Render a request: newest-wins — older unresolved requests in the thread are superseded. */
+  openApprovalRequest(opsThread: string, ticketId: number, kind: "needs-person" | "speculative", now = new Date()): number {
+    const ts = now.toISOString();
+    this.db.prepare("UPDATE approval_request SET superseded_by = -1, resolved_at = ? WHERE ops_thread = ? AND resolved_at IS NULL").run(ts, opsThread);
+    const info = this.db
+      .prepare("INSERT INTO approval_request (ops_thread, ticket_id, kind, created_at) VALUES (?, ?, ?, ?)")
+      .run(opsThread, ticketId, kind, ts);
+    return Number(info.lastInsertRowid);
+  }
+
+  pendingApproval(opsThread: string): { id: number; ticketId: number; kind: string; createdAt: string; confirmAt: string | null } | null {
+    const row = this.db
+      .prepare("SELECT * FROM approval_request WHERE ops_thread = ? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1")
+      .get(opsThread) as Record<string, unknown> | undefined;
+    return row ? {
+      id: Number(row.id), ticketId: Number(row.ticket_id), kind: String(row.kind),
+      createdAt: String(row.created_at), confirmAt: row.confirm_at ? String(row.confirm_at) : null,
+    } : null;
+  }
+
+  pendingApprovals(): { id: number; opsThread: string; ticketId: number; kind: string; createdAt: string }[] {
+    return (this.db.prepare("SELECT * FROM approval_request WHERE resolved_at IS NULL ORDER BY id DESC").all() as Record<string, unknown>[])
+      .map((r) => ({ id: Number(r.id), opsThread: String(r.ops_thread), ticketId: Number(r.ticket_id), kind: String(r.kind), createdAt: String(r.created_at) }));
+  }
+
+  armDestructiveConfirm(requestId: number, now: Date = new Date()): void {
+    this.db.prepare("UPDATE approval_request SET confirm_at = ? WHERE id = ?").run(now.toISOString(), requestId);
+  }
+
+  resolveApproval(requestId: number): void {
+    this.db.prepare("UPDATE approval_request SET resolved_at = ? WHERE id = ?").run(new Date().toISOString(), requestId);
+  }
+
+  /** v1.1 approve-on-needs-person: re-arm a failed ticket for another run. */
+  requeueTicket(id: number): boolean {
+    const r = this.db
+      .prepare(`UPDATE ticket SET requeued_at = ?, updated_at = ? WHERE id = ? AND state = 'open'`)
+      .run(new Date().toISOString(), new Date().toISOString(), id);
+    return r.changes > 0;
+  }
+
   // ── person commands (panel command acting directly — docs/002) ───────────
 
   /** v1.0 deliver gate: a person promotes a speculative ticket — delivery is authorized. */
@@ -446,7 +534,10 @@ export class Engine {
       FROM ticket t JOIN trigger tr ON tr.id = t.trigger_id
       LEFT JOIN assignment la ON la.ticket_id = t.id
         AND la.id = (SELECT MAX(b.id) FROM assignment b WHERE b.ticket_id = t.id)
-      WHERE t.state = 'open' AND (la.id IS NULL OR (la.state = 'ended' AND la.exit_code = 0))
+      WHERE t.state = 'open' AND (
+        la.id IS NULL OR (la.state = 'ended' AND la.exit_code = 0)
+        OR (t.requeued_at IS NOT NULL AND la.state = 'ended' AND t.requeued_at >= la.ended_at)
+      )
       ORDER BY t.id LIMIT ?`).all(limit) as Record<string, unknown>[];
     const openSpec = (this.db.prepare("SELECT COUNT(*) c FROM ticket WHERE state = 'open' AND speculative = 1").get() as { c: number }).c;
     const cap = speculationCap(this.policy());

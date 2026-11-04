@@ -76,6 +76,8 @@ export interface Policy {
   watchdog?: Partial<WatchdogPolicy>;
   /** Speculative execution (v1.0). Absent = disabled — observe stays silent. */
   speculation?: Partial<SpeculationPolicy>;
+  /** IM approval surface (v1.1). Absent = disabled — digits are just chat. */
+  approval?: { enabled?: boolean };
 }
 
 /**

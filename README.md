@@ -43,7 +43,7 @@ So this project takes one wedge and does it properly:
 ## How it works
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="Pipeline: GitHub Source → Trigger → Gate (fast path, deterministic) with ignore branch → Assessment (slow path) gated by the off/observe/auto mode ladder → Ticket → CLI Executor in a subprocess with per-ticket worktree → one-sentence reply in the original thread" width="880">
+  <img src="docs/architecture.svg" alt="v1.1 pipeline: five sources (GitHub, Feishu, Slack, Telegram, WeChat) → Gate (fast path, deterministic) with ignore branch → Assessment (slow path, one call per thread) under the off/observe/auto ladder → Ticket, with speculative silent rehearsal and follow-up context/spill → sandboxed any-CLI Executor in a per-ticket worktree, watched by the Watchdog → bot-identity PR → Merge Gate (approval covers head, CI green, line cap, veto) — a Human Surface rail (panel, IM ops digits, GitHub review) authorizes executor and merge; replies return via the outbox to any channel" width="880">
 </p>
 
 ## Executor-agnostic

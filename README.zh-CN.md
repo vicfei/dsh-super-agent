@@ -43,7 +43,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 ## 工作原理
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="管线:GitHub Source → Trigger → Gate(快路径,确定性,ignore 分支只记录)→ 评估(慢路径,受 off/observe/auto 模式阶梯管制)→ Ticket → CLI Executor 子进程 + 每工单 worktree → 原线程一句话回帖" width="880">
+  <img src="docs/architecture.svg" alt="v1.1 管线:五通道(GitHub、飞书、Slack、Telegram、微信)→ Gate(快路径,确定性,ignore 分支只记录)→ 评估(慢路径,每线程一次)受 off/observe/auto 阶梯管制 → Ticket(投机静默预演 · 后续上下文/Spill)→ 沙箱化的任意 CLI Executor(每工单 worktree,Watchdog 外环守望)→ bot 身份 PR → 合并闸(审批覆盖头提交、CI 全绿、行数上限、一票否决)——右侧人的审批面(面板、IM ops 数字、GitHub review)授权执行与合并;回复经 outbox 回到任意通道" width="880">
 </p>
 
 ## 执行器无关

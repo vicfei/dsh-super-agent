@@ -89,6 +89,14 @@ merge conditions are checkable facts, not model judgment.
       watch promote sweep — idempotent, capped, audit-intact
 - [x] README: the article's checklist one-by-one + ecosystem positioning (#70)
 
+## Milestone 11 — the approval surface goes pocket-sized (done, v1.1.0)
+
+- [x] IM remote approval surface (#77, design #72/#76): ops threads auto-registered from an
+      allowed member's first DM; digits resolve pending decisions (requeue/stop/promote/
+      discard/detail) with double-key destructive acts, 60-min expiry, newest-wins single
+      pending, receipts; interception sits downstream of admission; GitHub merge approvals
+      stay on GitHub by design
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)

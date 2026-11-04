@@ -53,6 +53,9 @@
 <h2>By person</h2>
 <div id="persons"></div>
 
+<h2>Pending approvals (IM)</h2>
+<div id="approvals"></div>
+
 <h2>Pull requests</h2>
 <div id="deliveries"></div>
 
@@ -127,6 +130,12 @@ async function render() {
         const dels = p.deliveries.map(d => `PR #${d.prNumber} ${d.state}`).join(' · ');
         return `<div class="card"><b>${esc(who)}</b> — ${counts || 'no open work'}${fuTag}${dels ? `<div class="quiet">${dels}</div>` : ''}</div>`;
       }).join('');
+
+  const aps = s.approvals || [];
+  document.getElementById('approvals').innerHTML = aps.length === 0
+    ? '<div class="quiet">no approval requests waiting</div>'
+    : aps.map(a => `<div class="card"><span class="badge b-person">${esc(a.kind)}</span>
+        ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ops thread · since ${fmt(a.createdAt)}</div>`).join('');
 
   const deliveries = s.deliveries || [];
   const mergeOn = !!(s.policy && s.policy.merge && s.policy.merge.enabled);

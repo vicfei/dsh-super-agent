@@ -14,6 +14,7 @@ export { runWatch, type WatchOptions } from "./watch.js";
 export { evaluateMerge, runMergeSweep, type MergeCheck, type MergeSweepLine } from "./merge.js";
 export { runWatchdogSweep, healthReport, watchdogPolicyOf, type WatchdogLine, type WatchdogPolicy, type HealthReport, type ProgressCheck } from "./watchdog.js";
 export { runPromoteSweep } from "./work.js";
+export { interceptApprovalCommands, runApprovalSweep, applyApproval, isApprovalDigit, approvalEnabled } from "./approval.js";
 export { classify, formatOutcome, type PollOutcome } from "./runner.js";
 export { llmAssessor, stubAssessor, type Assessor } from "./assess.js";
 export { clipReply, wordCount } from "./clip.js";

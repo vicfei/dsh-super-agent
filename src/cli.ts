@@ -158,9 +158,11 @@ try {
 
     const source = new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client });
     const { triggers, next } = await source.collect(engine.sourceState("github"), { exclude: engine.selfPosted() });
+    const { interceptApprovalCommands } = await import("./approval.js");
+    const { rest } = interceptApprovalCommands(triggers, engine, policy);
 
     const batch = [];
-    for (const t of triggers) {
+    for (const t of rest) {
       // Only inferred candidates reach the (potentially slow, potentially costly) assessment —
       // explicit never waits on it, and the gate's rejects never call it (docs/002).
       const gate = evaluateGate(policy, t);

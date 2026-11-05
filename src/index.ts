@@ -39,3 +39,20 @@ export { classify, formatOutcome, type PollOutcome } from "./runner.js";
 export { llmAssessor, stubAssessor, type Assessor } from "./assess.js";
 export { clipReply, wordCount } from "./clip.js";
 export { startPanel } from "./panel.js";
+export {
+  runWizard,
+  writeConfigs,
+  buildPolicy,
+  buildExecutor,
+  TEMPLATES,
+  loadAnswersFile,
+  applyRuntimeDetection,
+  shellProbe,
+  nextSteps,
+  AGENT_PROBE_LIST,
+  DOCS_URL,
+  type InitAnswers,
+  type InitDeps,
+  type WriteResult,
+} from "./init.js";
+export { runDoctor, formatDoctor, envReferences, type DoctorInput, type DoctorReport, type Check, type CheckStatus } from "./doctor.js";

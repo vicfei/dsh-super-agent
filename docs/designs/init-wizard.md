@@ -1,6 +1,6 @@
-# `dsh init` wizard + `dsh doctor` — design (v1.2 candidate)
+# `dsh init` wizard + `dsh doctor` — design (v1.2)
 
-> Status: design. The competition proved the point twice this week: opensuperagent reached
+> Status: **implemented** — see §5 for what shipped and the deltas. The competition proved the point twice this week: opensuperagent reached
 > ★34 in 3 days on `npm i -g opensuperagent && opensuperagent init && serve` — a web form
 > and a running agent in two minutes. LofiSu ships a loopback UI. Our onboarding today is
 > "read README §Quick start, hand-write policy.json and executor.json, hope". That is the
@@ -133,3 +133,28 @@ wizard's own templates.
   (0/1/2); risky-combo heuristics; env-reference extraction from executor template.
 - init smoke in CI: `dsh init --template minimal` in a tmp repo with a fake `codex` shim on
   PATH → doctor (with fake token env) exits 0.
+
+## 5. Implementation notes (what shipped, and the deltas)
+
+1. **Doctor is offline by default — fully.** Not just the per-channel checks: the token
+   whoami and the repo permission check also wait for `--probe-network` (the default run
+   prints "set (whoami with --probe-network)"). The design's example output implies
+   network by default; the shipped default is stricter so `dsh doctor` is safe anywhere
+   and CI-testable.
+2. **The db check never touches the engine db.** It opens a throwaway
+   `<db>.doctor-probe` database in the same directory, round-trips one kv row, deletes
+   it — the engine db itself is only read (wechat auth), and is never created as a side
+   effect (init and doctor both run before any engine exists).
+3. **Wizard prompts are one-per-line.** Space-to-toggle channel chips need a TUI
+   library; the zero-dep readline contract (auditable in a single screen) wins. Channels
+   are picked as a comma-separated list; everything else is Y/n or numbered choices with
+   re-ask on garbage.
+4. **Templates ship honest placeholders.** `minimal` has `allowedList:
+   ["YOUR_LOGIN"]` (an empty list would trip doctor's empty-allowedList warning on day
+   one); `dogfood` carries the daemon's shape — approval surface, watchdog, speculation,
+   IM rows, shorter worker timeout — as a starting point, not a mirror.
+5. **`agentLogin` is asked in step 2** (mention detection needs it for `watch`), and the
+   final screen prints the exact `dsh doctor` + `dsh watch` commands including it.
+6. Env checklists for chosen channels print at step 6, and doctor re-verifies every env
+   name the executor command references (`$VAR`/`${VAR}`, `DSH_*` excluded — provided at
+   runtime).

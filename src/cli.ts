@@ -58,6 +58,13 @@ function parseOrDie() {
         "no-panel": { type: "boolean", default: false },
         token: { type: "string" },
         post: { type: "boolean", default: false },
+        // init (v1.2)
+        template: { type: "string" },
+        dir: { type: "string", default: "./dsh" },
+        force: { type: "boolean", default: false },
+        answers: { type: "string" },
+        // doctor (v1.2)
+        "probe-network": { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -73,7 +80,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "routines", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "routines", "init", "doctor", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -81,6 +88,86 @@ if (args.help || command === "help") {
 }
 if (!(COMMANDS as readonly string[]).includes(command)) {
   die(`unknown command: ${command}${WITH_HELP}`);
+}
+
+// init & doctor run before the engine exists — neither may create .state/ as a side effect.
+if (command === "init") {
+  const initMod = await import("./init.js");
+  let answers: import("./init.js").InitAnswers;
+  if (args.answers) {
+    answers = initMod.loadAnswersFile(args.answers);
+  } else if (args.template) {
+    const t = initMod.TEMPLATES[args.template as "minimal" | "dogfood"];
+    if (!t) die(`unknown --template "${args.template}" (minimal | dogfood)${WITH_HELP}`);
+    answers = await initMod.applyRuntimeDetection(t); // same auto-detection the wizard applies (bwrap → sandbox on)
+  } else {
+    const readline = await import("node:readline/promises");
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      answers = await initMod.runWizard({
+        prompt: (q) => rl.question(q),
+        print: (l) => console.log(l),
+        env: process.env,
+        probe: initMod.shellProbe,
+        whoami: async (token) => {
+          try {
+            const r = await fetch("https://api.github.com/user", { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
+            if (!r.ok) return null;
+            return ((await r.json()) as { login?: string }).login ?? null;
+          } catch {
+            return null; // offline wizard: we just ask instead
+          }
+        },
+      });
+    } finally {
+      rl.close();
+    }
+  }
+  const result = initMod.writeConfigs(args.dir, answers, args.force);
+  for (const s of result.skipped) console.log(`exists: ${s} — kept (use --force to overwrite)`);
+  for (const b of result.backups) console.log(`backup:  ${b}`);
+  for (const w of result.written) console.log(`wrote:   ${w}`);
+  if (result.written.length === 0) process.exitCode = 1;
+  for (const l of initMod.nextSteps(answers, args.dir)) console.log(l);
+  process.exit(process.exitCode ?? 0);
+}
+
+if (command === "doctor") {
+  const { runDoctor, formatDoctor } = await import("./doctor.js");
+  const { shellProbe } = await import("./init.js");
+  const policy = existsSync(args.config) ? (() => { try { return JSON.parse(readFileSync(args.config, "utf8")) as Policy; } catch { return undefined; } })() : undefined;
+  const executorCfg = existsSync(args["executor-config"]) ? (() => { try { return JSON.parse(readFileSync(args["executor-config"], "utf8")) as { command: string; sandbox?: { enabled?: boolean; allowNetwork?: boolean }; prepare?: string }; } catch { return undefined; } })() : undefined;
+  let wechatAuthPresent = false;
+  if (existsSync(args.db)) {
+    try {
+      const { default: Database } = await import("better-sqlite3");
+      const ro = new Database(args.db, { readonly: true });
+      wechatAuthPresent = Boolean(ro.prepare("SELECT v FROM kv WHERE k = 'wechat_auth'").get());
+      ro.close();
+    } catch {
+      wechatAuthPresent = false; // unreadable/missing table — "not logged in" is the honest answer
+    }
+  }
+  const bwrap = await shellProbe("which", ["bwrap"], 3000);
+  const report = await runDoctor({
+    nodeVersion: process.version,
+    env: process.env as Record<string, string | undefined>,
+    policy,
+    policyPath: args.config,
+    executor: executorCfg,
+    repo: args.repo,
+    dbPath: args.db,
+    bwrapPresent: bwrap.code === 0 && bwrap.stdout.trim() !== "",
+    agentVersion: async (bin) => {
+      const r = await shellProbe(bin, ["--version"], 5000);
+      return r.code === 0 ? r.stdout.trim().split("\n")[0] : "";
+    },
+    wechatAuthPresent,
+    probeNetwork: args["probe-network"],
+    fetchJson: async (url, headers) => fetch(url, { headers, signal: AbortSignal.timeout(5000) }),
+  });
+  for (const l of formatDoctor(report)) console.log(l);
+  process.exit(report.exitCode);
 }
 
 const engine = new Engine(args.db);

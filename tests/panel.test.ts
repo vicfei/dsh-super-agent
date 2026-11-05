@@ -107,4 +107,50 @@ describe("panel HTTP API", () => {
     const s = (await (await fetch(`${base}/api/state`)).json()) as { decisions: { wouldAccept: boolean; kind: string }[] };
     expect(s.decisions[0]).toMatchObject({ wouldAccept: true, kind: "ignore" });
   });
+
+  it("v1.3: health vitals ride along — stage counts and effect backlog", async () => {
+    engine.ingest([item("github:issue:4")]);
+    const s = (await (await fetch(`${base}/api/state`)).json()) as {
+      health: { tickets: Record<string, number>; pendingEffects: number; failedEffects: number };
+    };
+    expect(s.health.tickets.queued).toBe(1);
+    expect(s.health.pendingEffects).toBeGreaterThan(0);
+    expect(s.health.failedEffects).toBe(0);
+  });
+
+  it("v1.3: routines render with the next fire from the engine's timer positions", async () => {
+    const withRoutines: Policy = {
+      ...policy,
+      routines: {
+        enabled: true,
+        definitions: [{ id: "digest", prompt: "summarize", schedule: { cron: "0 8 * * *", tz: "UTC" }, reportTo: "github:o/r/issues/9" }],
+      },
+    };
+    engine.setPolicyIfChanged({ ...withRoutines, version: 2 });
+    // a running daemon's state: today's 08:00 slot already honored → next is tomorrow 08:00
+    const todayAt8 = new Date();
+    todayAt8.setUTCHours(8, 0, 0, 0);
+    engine.ingest([], { timer: { positions: { "last:digest": todayAt8.getTime() } } });
+
+    const s = (await (await fetch(`${base}/api/state`)).json()) as {
+      routines: { enabled: boolean; items: { id: string; schedule: string; next: string; overdue: boolean; reportTo: string }[] };
+    };
+    expect(s.routines.enabled).toBe(true);
+    expect(s.routines.items).toHaveLength(1);
+    const r = s.routines.items[0];
+    expect(r.id).toBe("digest");
+    expect(r.schedule).toContain("0 8 * * *");
+    expect(r.overdue).toBe(false);
+    expect(new Date(r.next).getUTCHours()).toBe(8);
+    expect(r.reportTo).toBe("github:o/r/issues/9");
+  });
+
+  it("v1.3: the clock off renders honestly (enabled flag false, no definitions fabricated)", async () => {
+    const s = (await (await fetch(`${base}/api/state`)).json()) as { routines: { enabled: boolean; items: unknown[] } };
+    expect(s.routines.enabled).toBe(false);
+    expect(s.routines.items).toEqual([]);
+    const html = await (await fetch(`${base}/`)).text();
+    expect(html).toContain("the clock is off");
+    expect(html).toContain("Routines");
+  });
 });

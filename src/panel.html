@@ -36,6 +36,7 @@
 <body>
 <h1>dsh-super-agent</h1>
 <div class="sub">Messages cannot change permissions — host-enforced admission · policy v<span id=pv></span></div>
+<div class="sub" id="health"></div>
 
 <div class="mode">
   accept mode:
@@ -55,6 +56,9 @@
 
 <h2>Pending approvals (IM)</h2>
 <div id="approvals"></div>
+
+<h2>Routines — the clock</h2>
+<div id="routines"></div>
 
 <h2>Pull requests</h2>
 <div id="deliveries"></div>
@@ -81,6 +85,12 @@ async function api(path, body) {
 async function render() {
   const s = await api('/api/state');
   document.getElementById('pv').textContent = s.policy ? s.policy.version : '?';
+  const mins = ms => ms === null ? '—' : Math.round(ms / 60000) + 'm';
+  const h = s.health || { tickets: {}, effects: {} };
+  document.getElementById('health').innerHTML =
+    `queued ${h.tickets.queued ?? 0} · working ${h.tickets.working ?? 0} · needs-person ${h.tickets['needs-person'] ?? 0} · ended ${h.tickets.ended ?? 0}` +
+    ` · effects pending ${h.pendingEffects ?? 0} / failed ${h.failedEffects ?? 0}` +
+    ` · oldest working ${mins(h.oldestWorkingMs)} · oldest needs-person ${mins(h.oldestNeedsPersonMs)}`;
   document.querySelectorAll('#modes button').forEach(b => {
     b.classList.toggle('on', s.policy && b.dataset.mode === s.policy.acceptMode);
   });
@@ -136,6 +146,15 @@ async function render() {
     ? '<div class="quiet">no approval requests waiting</div>'
     : aps.map(a => `<div class="card"><span class="badge b-person">${esc(a.kind)}</span>
         ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ops thread · since ${fmt(a.createdAt)}</div>`).join('');
+
+  const rt = s.routines || { enabled: false, items: [] };
+  document.getElementById('routines').innerHTML = !rt.enabled
+    ? '<div class="quiet">the clock is off — policy.routines absent or disabled (nothing fires by default)</div>'
+    : rt.items.length === 0
+      ? '<div class="quiet">enabled, no definitions</div>'
+      : rt.items.map(r => `<div class="card"><span class="badge ${r.overdue ? 'b-shadow' : 'b-accept'}">${r.overdue ? 'overdue' : 'scheduled'}</span>
+          <b>${esc(r.id)}</b> ${esc(r.schedule)} → ${esc(threadShort(r.reportTo))}
+          <span class="quiet">next ${esc(r.next)}${r.overdue ? ' — catch-up fires on the next sweep' : ''}</span></div>`).join('');
 
   const deliveries = s.deliveries || [];
   const mergeOn = !!(s.policy && s.policy.merge && s.policy.merge.enabled);

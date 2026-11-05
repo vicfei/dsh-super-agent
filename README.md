@@ -84,6 +84,10 @@ Every row below is wired, offline-tested (290 tests), and running on this repo's
 
 **IM remote approval surface (v1.1).** The human approval surface, pocket-sized — implemented per [the design](docs/designs/im-approval-surface.md). With `policy.approval` enabled, an allowed-list member's first IM DM to the bot registers their **ops thread**; pending decisions arrive there and a **single digit** resolves them: needs-person tickets (`1` requeue · `2` stop · `3` detail) and finished speculative rehearsals (`1` promote — the deliver gate · `2` discard · `3` detail). Anti-mistouch is structural: whole-body digit shape only, **double-key for destructive acts** (a second `2` within 5 minutes), 60-minute expiry, newest-wins single pending per thread, a receipt for every applied action — and two hard non-goals by design: **GitHub merge approvals stay on GitHub** (that identity is structural), and the surface can never change policy or create work. Digits in groups, from strangers, or attached to words are just chat.
 
+<p align="center"><img src="docs/demo-wechat-approval.png" alt="WeChat chat: a FAILTEST task fails into needs-person, a 🔑 approval request arrives, and the digits 3, 1, 2, 2 walk detail → requeue (worker fails again, new 🔑) → double-key stop" width="380"></p>
+
+*The A1 live test (2026-11-05), actual transcript with identifiers masked: the whole state machine in one WeChat DM — `FAILTEST` fails into needs-person, the 🔑 request lands, `3` (detail) → `1` (requeue — the worker runs again, fails again, a new 🔑 arrives) → `2` `2` (the safety double-key stops the ticket).*
+
 ## The article's checklist, one by one
 
 Every famous concept from *Super-agent: Design Explorations*, and where it lives here:

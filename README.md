@@ -60,7 +60,7 @@ Bring your own model for the assessment layer: any OpenAI-compatible `/chat/comp
 
 ## Status
 
-Early. Seed milestone — the admission domain compiles, is tested, and nothing else is wired yet:
+Every row below is wired, offline-tested (290 tests), and running on this repo's own dogfood daemon:
 
 | Piece | Status |
 |---|---|
@@ -78,6 +78,9 @@ Early. Seed milestone — the admission domain compiles, is tested, and nothing 
 | Feishu / Slack / WeChat / Telegram channels — same admission table, same loop (`im_dm` / `im_group`) | ✅ v0.8 |
 | Watchdog — stuck-work nudge & needs-person reminder, one each, never admits | ✅ v0.9 |
 | IM remote approval surface — digits in the ops DM resolve pending decisions (double-key, expiry, receipts) | ✅ v1.1 — [design](docs/designs/im-approval-surface.md) |
+| Routines — the timer Source: cron + per-routine IANA tz + restart-safe catch-up, **through admission control** | ✅ v1.2 — [design](docs/designs/routines-source.md) |
+| `dsh init` wizard + `dsh doctor` — two-file onboarding + the read-only truth-teller (exit 0/1/2) | ✅ v1.2 — [design](docs/designs/init-wizard.md) |
+| Sandbox default-on + the worker's approval-request file (`.dsh/approval-request.md`) | ✅ v1.2 |
 
 **IM remote approval surface (v1.1).** The human approval surface, pocket-sized — implemented per [the design](docs/designs/im-approval-surface.md). With `policy.approval` enabled, an allowed-list member's first IM DM to the bot registers their **ops thread**; pending decisions arrive there and a **single digit** resolves them: needs-person tickets (`1` requeue · `2` stop · `3` detail) and finished speculative rehearsals (`1` promote — the deliver gate · `2` discard · `3` detail). Anti-mistouch is structural: whole-body digit shape only, **double-key for destructive acts** (a second `2` within 5 minutes), 60-minute expiry, newest-wins single pending per thread, a receipt for every applied action — and two hard non-goals by design: **GitHub merge approvals stay on GitHub** (that identity is structural), and the surface can never change policy or create work. Digits in groups, from strangers, or attached to words are just chat.
 
@@ -94,6 +97,7 @@ Every famous concept from *Super-agent: Design Explorations*, and where it lives
 | §3 Subscription 直通 | follow-ups join the live ticket as context; no duplicate work | v0.7 |
 | §3 Inline & Spill + chain of recall | 8k inline budget, full text spills to `.dsh/spill/<id>.md` in the worktree | v0.9.1 |
 | §3 Speculative execution + deliver gate | silent rehearsal; **delivery only on a human promote** | v1.0 |
+| §3 Routines / proactivity | the timer Source — the clock knocks on the same door: cron + per-routine tz + restart-safe catch-up, through the admission table | v1.2 |
 | §4 Async ReAct, duplex | subprocess workers with env contracts, group-kill timeout, outbox replies | v0.3+ |
 | §5 BYOM, state/env split | any OpenAI-compatible endpoint; SQLite state, worktree environments | v0.3 |
 | §6 Watchdog | observes and nudges — never admits, never kills; `health` CLI | v0.9 |
@@ -103,13 +107,20 @@ Every famous concept from *Super-agent: Design Explorations*, and where it lives
 
 ## Quick start
 
-One-liner (no clone needed, once published):
+Two commands to a running agent (v1.2) — the wizard writes the configs, the doctor verifies them:
 
 ```bash
-npx @vicfei/dsh-super-agent --help      # verify it runs; every command has --help-friendly errors
+npx @vicfei/dsh-super-agent init    # six-step wizard → ./dsh/policy.json + ./dsh/executor.json (observe by default)
+export GITHUB_TOKEN=ghp_…           # PAT: repo read (comments-write when replies land)
+npx @vicfei/dsh-super-agent doctor --config ./dsh/policy.json --executor-config ./dsh/executor.json
+npx @vicfei/dsh-super-agent watch --repo you/your-repo --agent-login your-login \
+  --config ./dsh/policy.json --executor-config ./dsh/executor.json
+# panel on http://127.0.0.1:8787 · Ctrl-C stops after the current cycle · --interval seconds · --no-panel
 ```
 
-The poll-and-classify loop runs today — point it at any repo and watch the gate work (observe mode by default: **nothing executes**, inferred candidates are only recorded as `would accept`):
+Non-interactive installs: `dsh init --template minimal|dogfood` (CI-testable) or `--answers file.json`. Every command also `--help`s itself.
+
+Or the manual path from a clone — point the poll-and-classify loop at any repo and watch the gate work (observe mode by default: **nothing executes**, inferred candidates are only recorded as `would accept`):
 
 ```bash
 git clone https://github.com/vicfei/dsh-super-agent && cd dsh-super-agent
@@ -131,13 +142,6 @@ Executor dispatch runs today too — any CLI in a subprocess, one git worktree p
 cp examples/executor.json executor.json    # command runs with $DSH_DIR/$DSH_PROMPT_FILE/…
 npm run work -- --repo you/your-repo --executor-config executor.json
 npm run tickets                            # stages: queued / working / needs-person / ended
-```
-
-Or run the whole loop as one daemon — poll, execute, report, and the panel in a single process:
-
-```bash
-npm run watch -- --repo you/your-repo --agent-login your-login --executor-config executor.json
-# panel on http://127.0.0.1:8787 · Ctrl-C stops after the current cycle · --interval seconds · --no-panel
 ```
 
 `claude`, `codex`, `opencode`, `aider` or any shell command works as the worker; 30-minute background cap (timeout kills the whole process group), worker slots, blocked-by-name commands, reports posted back into the thread. Wire a real assessment model with `--assessment llm` (+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`): called only for inferred candidates, explicit never waits, errors fail closed to negative.
@@ -171,9 +175,15 @@ Follow-ups on a live ticket join it as **context** instead of spawning duplicate
 
 **Speculative execution + deliver gate (v1.0).** The article's §3.4 — "a bug report in the group gets quietly fixed before anyone asks" — with the gate where it belongs: **in human hands**. With `policy.speculation` enabled, a positive inferred candidate in observe mode (today: a would-accept shadow record) may additionally open a **speculative ticket**: the work runs in its worktree but **in total silence** — no branch push, no PR, no reply, nothing said until it's done. The deliver gate is a person: `tickets promote <id>` (or the panel's promote button) authorizes delivery, and the watch daemon pushes the branch, opens the PR, and reports. Rehearsal is capped (`maxSpeculative`), the audit trail keeps the would-accept decision, and speculative work is **never** delivered without the promote.
 
+**Routines (v1.2).** The first triggers that come from **the clock** — and the design burden is inverted: scheduled work knocks on the same door as everyone else. A routine is owner-authored config (`policy.routines`: id, prompt, schedule, `reportTo`) that **still passes admission control** — no bypass, no privileged lane, no second pipeline. Scheduling closes the three gaps the field still leaves open: real **cron expressions** (5-field zero-dep parser, table-tested), **per-routine IANA timezones** (wall-clock folded via `Intl`; a DST spring-forward gap simply has no match that day), and **restart-safe catch-up** (the last honored slot persists in the same exactly-once transaction as every Source's read state; missed runs coalesce to one fire per sweep honoring the first missed slot). Through the front door, by construction: the routine must exist in the loaded policy (config IS the owner's voice) and its scope's `unlistedAddressing` cell must admit it — then it is an inferred candidate like any other: **observe** shadows or silently rehearses (🧪 → promote), **auto** works, the Slow Path assesses once per thread (deduping with chat on the same thread), and a fire into a thread with a live ticket **joins it as context** — "hourly soak" on one thread can never pile up. It reports to the real thread you already read, not a namespace: replies, approvals, and the watchdog all keep working. `dsh routines list | validate | fire <id>` — `fire` is the dogfood tool that proves the whole pipeline before you wait a day for the cron.
+
+**`dsh init` + `dsh doctor` (v1.2).** The first ten minutes, minus the hand-written JSON. `init` is a six-step zero-dep wizard (plain readline, one prompt per line): repo from your git origin, identity from a `GITHUB_TOKEN` whoami, agent CLI probed on PATH with an opt-in `--version` smoke, the mode ladder with observe recommended, sandbox, channels with their exact env checklists — writing `./dsh/policy.json` + `./dsh/executor.json` atomically; never a secret in the files, never an overwrite without `--force` (a `.bak.<ts>` is left). `doctor` is the read-only truth-teller: node ≥ 20, credential, repo, agent CLI, **sandbox (enabled without a wrapper is a FAILURE — a claim that cannot hold)**, every env name the executor references, policy schema + risky-combo heuristics, routines schedules + next fire, db writability, channel presence — fully **offline by default** (`--probe-network` opts into whoami and repo permissions), and the exit code tells CI the truth: **0 clean · 1 warnings · 2 failures**.
+
 **Fast Path / Slow Path (v0.9 naming).** The article's two-level filter, in our terms: the **Fast Path** is the deterministic gate — admission table, allowed list, host-enforced, no model in the loop; the **Slow Path** is the LLM assessment, consulted **only** for inferred candidates (explicit never waits), failing closed to negative on any error. Same-thread **trigger batching** is the subscription bypass: a burst on one thread costs one Slow-Path call (per thread) and one ticket — follow-ups join as context, they don't re-evaluate.
 
-**Executor sandbox (v0.9).** By default the worker subprocess runs with ambient host permissions — the admission gate decides *who may start work*, not what a started worker may touch. Flip `"sandbox": { "enabled": true }` in `executor.json` and the worker runs under **bwrap** (Linux) / **sandbox-exec` (macOS): read-only root, read-write only the ticket worktree, **network denied** unless `allowNetwork`, and an **env allowlist** — the child sees `PATH/HOME/…` + `DSH_*` + your `passEnv` and nothing else, so `GITHUB_TOKEN` never reaches a worker. A missing wrapper is a hard error — never a silent unsandboxed fallback. Workers that need their own auth env must list it in `passEnv` (secret-looking names are refused, loudly).
+**Executor sandbox (default-on since v1.2).** The admission gate decides *who may start work*; the sandbox decides what a started worker may touch — and **confinement is the norm, off is the exception**. Configs written by `init` and the shipped example enable it whenever the wrapper exists: **bwrap** (Linux) / **sandbox-exec** (macOS) — read-only root, read-write only the ticket worktree, **network denied** unless `allowNetwork`, and an **env allowlist**: the child sees `PATH/HOME/…` + `DSH_*` + your `passEnv` and nothing else, so `GITHUB_TOKEN` never reaches a worker. A missing wrapper is a hard error at startup and a doctor failure — never a silent unsandboxed fallback. Workers that need their own auth env must list it in `passEnv` (secret-looking names are refused, loudly).
+
+**The worker's approval request (v1.2).** A worker that wants permission — an outward action, something the sandbox blocks — writes title / reason / requested action to `$DSH_APPROVAL_FILE` (`.dsh/approval-request.md` in its worktree) and stops. The run lands in **needs-person** whatever its exit code says; the file is consumed (moved under `.dsh/approval-requested/`) and its content becomes the structured ask on the IM approval surface (`🔑 worker requested: … · 1 requeue · 2 stop · 3 detail`); **approve resumes with the request as guidance** — a note injected into the next run's context, consumed on claim. The file is one-way (worker writes, engine reads): **informative, never authoritative** — nothing the worker writes can flip a gate by itself.
 
 **Watchdog (v0.9).** The article's §6 outside control loop, with one hard rule: it **observes and nudges — it never touches admission**; "should this continue" stays with the human approval surface. Opt-in via `policy.watchdog`: an assignment running past `stuckWorkingNudgeMs` (default 30 min) gets exactly one check-in reply in its thread — before nudging, an optional LLM consult (any OpenAI-compatible endpoint, fail-closed to the rule) can skip it when the worker's output tail shows substantive progress; a needs-person ticket waiting past `needsPersonReminderMs` (default 24 h) gets exactly one reminder — never an auto-close. The executor's group-kill timeout remains the hard stop; the Watchdog never kills runs. `health` is its read-only CLI: stage counts, oldest stuck ages, effect backlog.
 
@@ -181,11 +191,11 @@ And the panel (`npm run panel`, localhost) shows only what needs a person — ne
 
 ## Comparison
 
-| | dispatch to CLI agents | worktrees | admission table | observe mode | host-enforced authz |
-|---|---|---|---|---|---|
-| Baton / Emdash / Agent Orchestrator / Claude Squad / … | ✅ | ✅ | ❌ | ❌ | ❌ |
-| dsh-superagent-prototype (official, DSH-only) | DSH sessions | ✅ | ✅ | ✅ | ✅ |
-| **dsh-super-agent** (this repo) | any CLI | ✅ | ✅ | ✅ | ✅ |
+| | dispatch to CLI agents | worktrees | admission table | observe mode | host-enforced authz | IM approval digits | routines through the gate | one-command onboarding |
+|---|---|---|---|---|---|---|---|---|
+| Baton / Emdash / Agent Orchestrator / Claude Squad / … | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| dsh-superagent-prototype (official, DSH-only) | DSH sessions | ✅ | ✅ | ✅ | ✅ | ❌ (their open gap) | ✅ (11-04 — but no cron / per-routine tz / catch-up: their own gap doc) | ❌ |
+| **dsh-super-agent** (this repo) | any CLI | ✅ | ✅ | ✅ | ✅ | ✅ v1.1 | ✅ v1.2 | ✅ v1.2 |
 
 *(Category row per the [Aug 2026 roundup](https://www.augmentcode.com/tools/open-source-agent-orchestrators); individual tools evolve — check their repos.)*
 

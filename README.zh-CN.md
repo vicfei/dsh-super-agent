@@ -60,7 +60,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 ## 当前状态
 
-早期。种子里程碑——准入域已实现并有测试,其余尚未接线:
+下表每一行都已接线、有离线测试覆盖(290 个),并跑在本仓库自己的狗粮守护进程上:
 
 | 组件 | 状态 |
 |---|---|
@@ -78,6 +78,9 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | 飞书 / Slack / 微信 / Telegram 通道——同一张准许表,同一回路(`im_dm` / `im_group`) | ✅ v0.8 |
 | Watchdog——滞留工作问询 + needs-person 提醒,各一次,永不碰准入 | ✅ v0.9 |
 | IM 远程审批面——ops 私聊里的数字处置待决事项(双确认、时效、回执) | ✅ v1.1——[设计](docs/designs/im-approval-surface.md) |
+| Routines——定时 Source:cron + 逐 routine 时区 + 重启安全补跑,**照走准入控制** | ✅ v1.2——[设计](docs/designs/routines-source.md) |
+| `dsh init` 向导 + `dsh doctor`——两文件上手 + 只读体检(exit 0/1/2) | ✅ v1.2——[设计](docs/designs/init-wizard.md) |
+| 沙箱默认开启 + worker 的审批请求文件(`.dsh/approval-request.md`) | ✅ v1.2 |
 
 **IM 远程审批面(v1.1)。** 人的审批面,装进口袋——按[设计文档](docs/designs/im-approval-surface.md)实现。开启 `policy.approval` 后,allowedList 成员首次 IM 私聊 bot 即注册其 **ops 线程**;待决事项送达该线程,**单个数字**即处置:needs-person 工单(`1` 重新排队 · `2` 停止 · `3` 详情)与预演完成的投机工单(`1` promote——交付闸 · `2` 丢弃 · `3` 详情)。防误触是结构性的:仅全等单数字、**破坏性操作双确认**(5 分钟内第二个 `2`)、60 分钟时效、每线程 newest-wins 单 pending、每个动作都有回执——以及两条设计上的硬边界:**GitHub 合并审批永远留在 GitHub**(身份是结构性的),审批面永远改不了策略、开不了工。群里的数字、陌生人的数字、带字的数字,都只是聊天。
 
@@ -94,6 +97,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | §3 订阅直通 | 后续消息并入活工单作上下文;不重复开工 | v0.7 |
 | §3 Inline & Spill + 链式召回 | 8k 内联预算,全文 spill 到 worktree 的 `.dsh/spill/<id>.md` | v0.9.1 |
 | §3 投机执行 + 交付闸 | 无声预演;**交付只由人的 promote 触发** | v1.0 |
+| §3 Routines / 主动性 | 定时 Source——时钟敲同一扇门:cron + 逐 routine 时区 + 重启安全补跑,过准许表 | v1.2 |
 | §4 异步 ReAct、双工 | 子进程 worker + 环境变量契约、进程组超时、outbox 回帖 | v0.3+ |
 | §5 BYOM、状态/环境分离 | 任意 OpenAI 兼容端点;SQLite 状态、worktree 环境 | v0.3 |
 | §6 Watchdog | 只观察只提醒——永不碰准入、永不杀任务;`health` CLI | v0.9 |
@@ -103,13 +107,20 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 ## 快速开始
 
-一行试用(发布后无需克隆仓库):
+两条命令跑起来(v1.2)——向导写配置,doctor 验配置:
 
 ```bash
-npx @vicfei/dsh-super-agent --help      # 先确认能跑;所有命令带 --help 友好报错
+npx @vicfei/dsh-super-agent init    # 六步向导 → ./dsh/policy.json + ./dsh/executor.json(默认 observe)
+export GITHUB_TOKEN=ghp_…           # PAT:repo 读权限(回复上线后需评论写权限)
+npx @vicfei/dsh-super-agent doctor --config ./dsh/policy.json --executor-config ./dsh/executor.json
+npx @vicfei/dsh-super-agent watch --repo you/your-repo --agent-login your-login \
+  --config ./dsh/policy.json --executor-config ./dsh/executor.json
+# 面板 http://127.0.0.1:8787 · Ctrl-C 在当前周期结束后停止 · --interval 秒数 · --no-panel
 ```
 
-轮询+分类回路今天就能跑——指向任意仓库,看门禁工作(默认 observe 模式:**什么都不执行**,inferred 候选只记录为 `would accept`):
+无人值守安装:`dsh init --template minimal|dogfood`(可进 CI)或 `--answers file.json`。所有命令自带 `--help` 友好报错。
+
+或者从克隆走手工路径——把轮询+分类回路指向任意仓库,看门禁工作(默认 observe 模式:**什么都不执行**,inferred 候选只记录为 `would accept`):
 
 ```bash
 git clone https://github.com/vicfei/dsh-super-agent && cd dsh-super-agent
@@ -131,13 +142,6 @@ npm run poll -- --repo you/your-repo --agent-login your-login --config policy.js
 cp examples/executor.json executor.json    # 命令里可用 $DSH_DIR/$DSH_PROMPT_FILE/…
 npm run work -- --repo you/your-repo --executor-config executor.json
 npm run tickets                            # 阶段:queued / working / needs-person / ended
-```
-
-或者一条命令跑完整守护进程——轮询、执行、报告、面板,单进程:
-
-```bash
-npm run watch -- --repo you/your-repo --agent-login your-login --executor-config executor.json
-# 面板 http://127.0.0.1:8787 · Ctrl-C 在当前周期结束后停止 · --interval 秒数 · --no-panel
 ```
 
 `claude`、`codex`、`opencode`、`aider` 或任意 shell 命令都可以当 Worker;30 分钟后台上限(超时杀整个进程组)、Worker 槽位、按名封锁的命令、报告回帖到原线程。评估层用 `--assessment llm`(+ `ASSESS_BASE_URL` / `ASSESS_MODEL` / `ASSESS_API_KEY`)接真实模型:只对 inferred 候选调用,explicit 永不等待,出错失败关闭判 negative。
@@ -171,9 +175,15 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 
 **投机执行 + 交付闸(v1.0)。** 文章 §3.4——"群里报 Bug,先默默修,修好才说话"——而闸门放在它该在的地方:**人手里**。开启 `policy.speculation` 后,observe 模式下的正向 inferred 候选(今天的 would-accept 影子记录)可以额外开出一张**投机工单**:工作在 worktree 里照跑,但**全程沉默**——不推分支、不开 PR、不回帖,修好之前什么都不说。交付闸是人:`tickets promote <id>`(或面板的 promote 按钮)授权交付,watch 守护进程随即推分支、开 PR、汇报。预演有并发上限(`maxSpeculative`),审计保留 would-accept 决策,**没有 promote,投机工作绝不交付**。
 
+**Routines(v1.2)。** 第一批来自**时钟**的触发——设计负担因此倒转:定时工作敲的是同一扇门。一个 routine 是 owner 写在配置里的东西(`policy.routines`:id、prompt、schedule、`reportTo`),却**照走准入控制**——没有旁路、没有特权车道、没有第二条流水线。调度补齐了业界还开着的三个口子:真 **cron 表达式**(5 段零依赖解析器,表驱动测试)、**逐 routine 的 IANA 时区**(经 `Intl` 折算墙钟;夏令时跳变造成的空洞当天就是无匹配)、**重启安全补跑**(最后兑现的槽位与所有 Source 的读位同事务持久化;漏跑合并——每轮补一次,兑现最早漏掉的槽)。走前门,全部 by construction:routine 必须存在于已加载策略(配置就是 owner 的声音),且其 scope 的 `unlistedAddressing` 格放行——此后它与任何 inferred 候选无异:**observe** 影子记录或静默预演(🧪 → promote),**auto** 干活,Slow Path 每线程只评估一次(与该线程的聊天去重),落进有活工单的线程就**并入上下文**——"每小时 soak" 永远不会堆积。它汇报到你本来就在读的真实线程(`reportTo`),不是什么命名空间:回帖、审批、Watchdog 全部照旧。`dsh routines list | validate | fire <id>`——`fire` 是狗粮工具,不用等一天让 cron 来证明整条链路。
+
+**`dsh init` + `dsh doctor`(v1.2)。** 头十分钟,不再手写 JSON。`init` 是六步零依赖向导(纯 readline,一行一问):从 git origin 探仓库、从 `GITHUB_TOKEN` whoami 认身份、PATH 上探测 agent CLI 并可选 `--version` 冒烟、模式阶梯(推荐 observe)、沙箱、通道及其精确的环境清单——原子写出 `./dsh/policy.json` + `./dsh/executor.json`;文件里永远没有密钥,不加 `--force` 永不覆盖(覆盖前留 `.bak.<时间戳>`)。`doctor` 是只读的讲真话者:node ≥ 20、凭证、仓库、agent CLI、**沙箱(开了却没有 wrapper 是 FAIL——兑现不了的声明)**、executor 引用的每个环境变量、策略 schema + 危险组合启发式、routines 排程 + 下次触发、db 可写性、通道配置——默认**完全离线**(`--probe-network` 才做 whoami 和仓库权限),退出码对 CI 讲真话:**0 干净 · 1 有警告 · 2 有失败**。
+
 **Fast Path / Slow Path(v0.9 命名对齐)。** 文章的两级过滤,用我们的话说:**Fast Path** 是确定性门禁——准许表、名单、宿主强制,回路里没有模型;**Slow Path** 是 LLM 评估,只对 inferred 候选调用(explicit 永不等待),任何出错失败关闭判 negative。同线程的**触发批处理**就是订阅旁路:一个线程上的突发只花一次 Slow Path 调用(按线程计)、开一张工单——后续消息并入上下文,不再重评。
 
-**执行器沙箱(v0.9)。** 默认 worker 子进程以宿主环境权限运行——准入门禁决定*谁可以开工*,不决定开工后的 worker 能碰什么。在 `executor.json` 开 `"sandbox": { "enabled": true }`,worker 即运行于 **bwrap**(Linux)/ **sandbox-exec**(macOS):根目录只读、仅工单 worktree 可写、**默认断网**(除非 `allowNetwork`)、**环境变量白名单**——子进程只见 `PATH/HOME/…` + `DSH_*` + 你配置的 `passEnv`,其余一概不见,`GITHUB_TOKEN` 永远到不了 worker。wrapper 缺失是硬错误——绝不静默降级为未沙箱运行。需要自身认证环境变量的 worker 必须在 `passEnv` 里列名(秘密样命名会被大声拒绝)。
+**执行器沙箱(v1.2 起默认开启)。** 准入门禁决定*谁可以开工*,沙箱决定开工后的 worker 能碰什么——而**约束是常态,关闭才是例外**。`init` 写出的配置和自带的示例在 wrapper 存在时默认开启:**bwrap**(Linux)/ **sandbox-exec**(macOS):根目录只读、仅工单 worktree 可写、**默认断网**(除非 `allowNetwork`)、**环境变量白名单**——子进程只见 `PATH/HOME/…` + `DSH_*` + 你配置的 `passEnv`,其余一概不见,`GITHUB_TOKEN` 永远到不了 worker。wrapper 缺失是启动时的硬错误、doctor 的失败项——绝不静默降级为未沙箱运行。需要自身认证环境变量的 worker 必须在 `passEnv` 里列名(秘密样命名会被大声拒绝)。确需关闭时设 `enabled: false`,并明白 worker 此后未受约束。
+
+**worker 的审批请求(v1.2)。** 想获得许可的 worker——比如某个对外动作、某件沙箱拦下的事——把标题/原因/请求动作写进 `$DSH_APPROVAL_FILE`(其 worktree 的 `.dsh/approval-request.md`)然后停下。无论退出码是什么,这次运行都落在 **needs-person**;文件被消费(移入 `.dsh/approval-requested/`),内容成为 IM 审批面上的结构化请求(`🔑 worker requested: … · 1 重新排队 · 2 停止 · 3 详情`);**approve 即带着请求作为引导续跑**——一条注入下次运行上下文的注记,领取即消费。文件是单向的(worker 写,engine 读):**仅供参考,永远不作数**——worker 写下的任何东西都不能自己拨动任何闸门。
 
 **Watchdog(v0.9)。** 文章 §6 的外部控制回路,带一条铁律:**只观察、只提醒,永不碰准入**——"要不要继续"永远留在人的审批面。`policy.watchdog` 显式开启:任务跑过 `stuckWorkingNudgeMs`(默认 30 分钟)在其线程里收到恰好一次问询——催之前,可选的 LLM 问诊(任意 OpenAI 兼容端点,失败关闭退回规则)若从 worker 输出尾部看到实质进展则跳过;needs-person 工单等待超过 `needsPersonReminderMs`(默认 24 小时)收到恰好一次提醒——**永不自动关闭**。执行器的进程组超时仍是硬停止,Watchdog 绝不杀任务。`health` 是它的只读 CLI:阶段计数、最老滞留时长、effect 积压。
 
@@ -181,11 +191,11 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 
 ## 对比
 
-| | 派活给 CLI 智能体 | worktree | 准许表 | 观察模式 | 宿主强制授权 |
-|---|---|---|---|---|---|
-| Baton / Emdash / Agent Orchestrator / Claude Squad / … | ✅ | ✅ | ❌ | ❌ | ❌ |
-| dsh-superagent-prototype(官方,仅 DSH) | DSH 会话 | ✅ | ✅ | ✅ | ✅ |
-| **dsh-super-agent**(本仓库) | 任意 CLI | ✅ | ✅ | ✅ | ✅ |
+| | 派活给 CLI 智能体 | worktree | 准许表 | 观察模式 | 宿主强制授权 | IM 审批数字 | 走准许表的 routines | 一条命令上手 |
+|---|---|---|---|---|---|---|---|---|
+| Baton / Emdash / Agent Orchestrator / Claude Squad / … | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| dsh-superagent-prototype(官方,仅 DSH) | DSH 会话 | ✅ | ✅ | ✅ | ✅ | ❌(其自认缺口) | ✅(11-04——但无 cron / 逐 routine 时区 / 补跑:其 gap 文档自述) | ❌ |
+| **dsh-super-agent**(本仓库) | 任意 CLI | ✅ | ✅ | ✅ | ✅ | ✅ v1.1 | ✅ v1.2 | ✅ v1.2 |
 
 *(品类一行依据[2026 年 8 月盘点](https://www.augmentcode.com/tools/open-source-agent-orchestrators);各工具在演进,以各自仓库为准。)*
 

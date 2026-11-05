@@ -300,7 +300,11 @@ try {
     if (!args["no-panel"]) {
       const port = Number(process.env.PANEL_PORT ?? 8787);
       const { startPanel } = await import("./panel.js");
-      await startPanel(engine, port);
+      await startPanel(engine, port, "127.0.0.1", {
+        executor: { command: execCfg.command, sandbox: execCfg.sandbox, prepare: execCfg.prepare },
+        repo: args.repo,
+        dbPath: args.db,
+      });
       console.log(`watch: panel on http://127.0.0.1:${port}`);
     }
     console.log(`watch: polling ${args.repo} every ${args.interval ?? 30}s (±20% jitter) — Ctrl-C stops after the current cycle`);
@@ -420,7 +424,10 @@ try {
   } else if (command === "panel") {
     const port = Number(positionals[1] ?? process.env.PANEL_PORT ?? 8787);
     const { startPanel } = await import("./panel.js");
-    const server = await startPanel(engine, port);
+    const doctorExec = existsSync(args["executor-config"])
+      ? (() => { try { const c = JSON.parse(readFileSync(args["executor-config"], "utf8")) as { command?: string; sandbox?: { enabled?: boolean; allowNetwork?: boolean }; prepare?: string }; return c.command ? { command: c.command, sandbox: c.sandbox, prepare: c.prepare } : undefined; } catch { return undefined; } })()
+      : undefined;
+    const server = await startPanel(engine, port, "127.0.0.1", { executor: doctorExec, repo: args.repo, dbPath: args.db });
     console.log(`panel: http://127.0.0.1:${port} (db ${args.db}) — Ctrl-C to stop`);
     const shutdown = () => {
       server.close(() => process.exit(0));

@@ -10,10 +10,21 @@ import type { Policy } from "./domain.js";
 import type { Engine } from "./engine.js";
 import { healthReport } from "./watchdog.js";
 import { lastKey, nextRoutineFire, renderSchedule, routineDefinitions, routinesEnabled } from "./routines.js";
+import { runDoctor, type DoctorReport } from "./doctor.js";
+import { sandboxWrapperBin, shellProbe } from "./init.js";
 
 const PAGE = readFileSync(new URL("./panel.html", import.meta.url), "utf8");
 
 const NO_POLICY: Policy = { version: 0, allowedList: [], botList: [], acceptMode: "off", table: [] };
+
+/** What the host command knows and the panel alone cannot: the executor config, repo, db path. */
+export interface PanelDoctorContext {
+  executor?: { command: string; sandbox?: { enabled?: boolean; allowNetwork?: boolean }; prepare?: string };
+  repo?: string;
+  dbPath?: string;
+}
+
+const DOCTOR_CACHE_MS = 60_000; // the page polls every 3s; probes spawn subprocesses — cache hard
 
 export interface RoutinePanelItem {
   id: string;
@@ -33,10 +44,35 @@ export interface PanelState {
   health: ReturnType<typeof healthReport>;
   /** v1.3: the clock — each routine with its next fire, from the engine's timer positions. */
   routines: { enabled: boolean; items: RoutinePanelItem[] };
+  /** v1.3 slice 2: the doctor's checks, embedded (offline facts only; cached server-side). Null when not wired. */
+  doctor: DoctorReport | null;
 }
 
-export function startPanel(engine: Engine, port: number, host = "127.0.0.1"): Promise<Server> {
-  const server = createServer((req, res) => {
+export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doctorCtx?: PanelDoctorContext): Promise<Server> {
+  let doctorCache: { at: number; report: DoctorReport } | null = null;
+  const doctorNow = async (): Promise<DoctorReport | null> => {
+    if (!doctorCtx) return null;
+    if (doctorCache && Date.now() - doctorCache.at < DOCTOR_CACHE_MS) return doctorCache.report;
+    const wrapper = await shellProbe("which", [sandboxWrapperBin()], 3000);
+    const report = await runDoctor({
+      nodeVersion: process.version,
+      env: process.env as Record<string, string | undefined>,
+      policy: engine.policy() ?? NO_POLICY,
+      executor: doctorCtx.executor,
+      repo: doctorCtx.repo,
+      dbPath: doctorCtx.dbPath,
+      bwrapPresent: wrapper.code === 0 && wrapper.stdout.trim() !== "",
+      agentVersion: async (bin) => {
+        const r = await shellProbe(bin, ["--version"], 5000);
+        return r.code === 0 ? r.stdout.trim().split("\n")[0] : "";
+      },
+      wechatAuthPresent: engine.kvGet("wechat_auth") !== null,
+      probeNetwork: false, // the panel never probes network — reads only, offline by design
+    });
+    doctorCache = { at: Date.now(), report };
+    return report;
+  };
+  const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://local");
     const send = (status: number, type: string, body: string) => {
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
@@ -68,6 +104,7 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1"): Pr
         approvals: engine.pendingApprovals(),
         health: healthReport(engine),
         routines: { enabled: routinesEnabled(policy), items },
+        doctor: await doctorNow(),
       };
       send(200, "application/json", JSON.stringify(state));
       return;

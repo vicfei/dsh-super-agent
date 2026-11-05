@@ -191,7 +191,7 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 
 **Watchdog(v0.9)。** 文章 §6 的外部控制回路,带一条铁律:**只观察、只提醒,永不碰准入**——"要不要继续"永远留在人的审批面。`policy.watchdog` 显式开启:任务跑过 `stuckWorkingNudgeMs`(默认 30 分钟)在其线程里收到恰好一次问询——催之前,可选的 LLM 问诊(任意 OpenAI 兼容端点,失败关闭退回规则)若从 worker 输出尾部看到实质进展则跳过;needs-person 工单等待超过 `needsPersonReminderMs`(默认 24 小时)收到恰好一次提醒——**永不自动关闭**。执行器的进程组超时仍是硬停止,Watchdog 绝不杀任务。`health` 是它的只读 CLI:阶段计数、最老滞留时长、effect 积压。
 
-面板(`npm run panel`,仅本机)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志,以及接受模式切换(切 `auto` 会要求确认):
+面板(`npm run panel`,仅本机——v1.3 仪表盘)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志、接受模式切换(切 `auto` 会要求确认)、routines 及其下次触发、Watchdog 体征,以及绿/黄/红渲染的 doctor 检查项:
 
 ## 对比
 

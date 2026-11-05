@@ -30,6 +30,9 @@
   td, th { text-align: left; padding: 4px 10px 4px 0; border-bottom: 1px solid #21262d; vertical-align: top; }
   th { color: #8b949e; font-weight: normal; }
   .ex { color: #8b949e; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dcheck { padding: 2px 0; }
+  .ic { display: inline-block; width: 16px; text-align: center; margin-right: 6px; font-weight: bold; }
+  .ic.ok { color: #3fb950; } .ic.warn { color: #e3b341; } .ic.fail { color: #f85149; } .ic.info { color: #8b949e; }
   footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
 </style>
 </head>
@@ -69,6 +72,9 @@
 <h2>Recent decisions</h2>
 <table><thead><tr><th>when</th><th>outcome</th><th>strength</th><th>author</th><th>thread</th><th>basis / excerpt</th></tr></thead>
 <tbody id="decisions"></tbody></table>
+
+<h2>Doctor — the setup truth</h2>
+<div id="doctor"></div>
 
 <footer>healthy state takes no space — empty sections mean nothing needs you</footer>
 
@@ -184,6 +190,13 @@ async function render() {
       <td class="quiet">${esc(threadShort(d.threadId))}</td>
       <td>${esc(d.basis)}<div class="ex">${esc(d.excerpt)}</div></td></tr>`;
   }).join('');
+
+  const doc = s.doctor;
+  const icon = { ok: '✓', warn: '!', fail: '✗', info: '—' };
+  document.getElementById('doctor').innerHTML = !doc
+    ? '<div class="quiet">not wired — start via dsh watch or dsh panel to embed the checks</div>'
+    : doc.checks.map(c => `<div class="dcheck"><span class="ic ${c.status}">${icon[c.status] || '·'}</span>${esc(c.line)}</div>`).join('')
+      + `<div class="quiet">${doc.failures > 0 ? doc.failures + ' failure' + (doc.failures === 1 ? '' : 's') + ', ' : ''}${doc.warnings > 0 ? doc.warnings + ' warning' + (doc.warnings === 1 ? '' : 's') : ''}${doc.failures === 0 && doc.warnings === 0 ? 'all clean' : ''} · exit ${doc.exitCode} · offline facts, cached 60s</div>`;
 }
 
 async function setMode(mode) {

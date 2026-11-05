@@ -153,4 +153,33 @@ describe("panel HTTP API", () => {
     expect(html).toContain("the clock is off");
     expect(html).toContain("Routines");
   });
+
+  it("v1.3 slice 2: without doctor context the section is honestly absent", async () => {
+    const s = (await (await fetch(`${base}/api/state`)).json()) as { doctor: unknown };
+    expect(s.doctor).toBeNull();
+    const html = await (await fetch(`${base}/`)).text();
+    expect(html).toContain("Doctor"); // the section exists, renders the not-wired note
+  });
+
+  it("v1.3 slice 2: with doctor context the checks ride along, offline, exit semantics intact", async () => {
+    await new Promise((r) => server.close(r));
+    server = await startPanel(engine, 0, "127.0.0.1", {
+      executor: { command: "definitely-not-on-path-xyz run" },
+    });
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const s = (await (await fetch(`${base}/api/state`)).json()) as {
+      doctor: { checks: { id: string; status: string; line: string }[]; warnings: number; failures: number; exitCode: number };
+    };
+    expect(s.doctor).not.toBeNull();
+    const byId = Object.fromEntries(s.doctor.checks.map((c) => [c.id, c]));
+    expect(byId.node.status).toBe("ok");
+    expect(byId["agent-cli"].status).toBe("warn"); // the bin is deliberately not on PATH
+    expect(byId["agent-cli"].line).toContain("definitely-not-on-path-xyz");
+    expect(s.doctor.failures).toBe(0);
+    expect(s.doctor.warnings).toBeGreaterThanOrEqual(1);
+    expect(s.doctor.exitCode).toBe(1); // warnings only — CI truth preserved
+    // the second poll within the cache window answers without re-probing (same shape)
+    const again = (await (await fetch(`${base}/api/state`)).json()) as { doctor: { checks: unknown[] } };
+    expect(again.doctor.checks.length).toBe(s.doctor.checks.length);
+  });
 });

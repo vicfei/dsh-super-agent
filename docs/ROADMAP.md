@@ -97,6 +97,27 @@ merge conditions are checkable facts, not model judgment.
       pending, receipts; interception sits downstream of admission; GitHub merge approvals
       stay on GitHub by design
 
+## Milestone 12 — the clock knocks on the same door + onboarding (done, v1.2.0)
+
+- [x] Routines, the timer Source (#81, design #80): cron (zero-dep 5-field parser) + per-routine
+      IANA tz (Intl fold; DST gaps have no match that day) + restart-safe catch-up (Source-position
+      kv, missed runs coalesce, 7-day horizon); a routine is owner config that still passes the
+      admission table — observe shadows/rehearses, auto works, live tickets absorb fires as context;
+      `dsh routines list | validate | fire`; live-verified end-to-end on the dogfood daemon over
+      WeChat (A1 report, 2026-11-05)
+- [x] `dsh init` wizard + `dsh doctor` (#82, design #80): six-step zero-dep wizard writing
+      ./dsh/{policy,executor}.json atomically (never a secret in the files, --force leaves .bak
+      backups, --template minimal|dogfood, --answers for scripted installs); doctor is the
+      read-only offline truth-teller, exit 0/1/2, sandbox-enabled-without-wrapper is a FAILURE
+- [x] Sandbox default-on + the worker's approval-request file (#83): confinement is the norm
+      (bwrap/sandbox-exec, platform-aware detection; missing wrapper stays a loud hard error);
+      `$DSH_APPROVAL_FILE` — a worker asking for permission lands in needs-person with its
+      request as the structured ask; approve resumes with it as guidance (a note, never a token)
+- [x] Live-test fixes shipped from the A1 run: WeChat sendmessage carries client_id +
+      message_state (#85 — absent/repeated client_id made the server drop every message after
+      the first, silently); empty-worktree promotes settle once instead of re-logging every
+      cycle (#86)
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)

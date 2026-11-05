@@ -18,6 +18,18 @@ import { GitHubSource } from "./github/source.js";
 import { Executor, type ExecutorConfig } from "./executor.js";
 import { GitHubReplyChannel, runWork } from "./work.js";
 import { mergePolicyOf } from "./domain.js";
+import {
+  lastKey,
+  minuteFloor,
+  nextRoutineFire,
+  renderSchedule,
+  routineDefinitions,
+  routineTrigger,
+  routinesEnabled,
+  threadIdToScope,
+  TimerSource,
+  validateRoutines,
+} from "./routines.js";
 import { NO_TOKEN_HINT, scaffoldFromExample, USAGE } from "./usage.js";
 
 function die(msg: string): never {
@@ -61,7 +73,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "routines", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -73,18 +85,26 @@ if (!(COMMANDS as readonly string[]).includes(command)) {
 
 const engine = new Engine(args.db);
 
-function readPolicyConfig(): Policy {
+function readPolicyConfig(opts: { skipRoutineValidation?: boolean } = {}): Policy {
   if (!existsSync(args.config) && scaffoldFromExample(args.config, "policy.json")) {
     console.log(`[bootstrap] created ${args.config} from examples/policy.json`);
     console.log("[bootstrap] put your GitHub login in allowedList, then rerun the same command");
     engine.close();
     process.exit(0);
   }
+  let policy: Policy;
   try {
-    return JSON.parse(readFileSync(args.config, "utf8")) as Policy;
+    policy = JSON.parse(readFileSync(args.config, "utf8")) as Policy;
   } catch (e) {
     die(`cannot read policy config ${args.config}: ${e instanceof Error ? e.message : e}`);
   }
+  if (!opts.skipRoutineValidation) {
+    // v1.2 routines: enforced at config load — fail closed, whole file
+    const rv = validateRoutines(policy);
+    if (rv.errors.length > 0) die(`policy ${args.config}: routines invalid (nothing loads):\n  - ${rv.errors.join("\n  - ")}`);
+    for (const w of rv.warnings) console.warn(`[warn] ${w}`);
+  }
+  return policy;
 }
 
 function loadPolicy(): Policy {
@@ -198,7 +218,13 @@ try {
     console.log(`watch: polling ${args.repo} every ${args.interval ?? 30}s (±20% jitter) — Ctrl-C stops after the current cycle`);
 
     const { runWatch } = await import("./watch.js");
-    const sources: Source[] = [new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client })];
+    // v1.2 routines: the timer Source runs FIRST in the cycle — firing is cheap, work is not.
+    const sources: Source[] = [];
+    if (routinesEnabled(policy)) {
+      sources.push(new TimerSource({ policy, log: (l) => console.log(l) }));
+      console.log(`routines: timer source armed (${routineDefinitions(policy).length} definition(s)) — through the gate like any message`);
+    }
+    sources.push(new GitHubSource({ repo: args.repo!, agentLogin: args["agent-login"]!, client }));
     const channels: ReplyChannel[] = authenticated ? [new GitHubReplyChannel(client, args.repo!)] : [];
 
     // Feishu (v0.8 M8-2): armed by env — self-built app, WebSocket long connection, no public URL.
@@ -339,6 +365,65 @@ try {
     if (binder) {
       engine.kvSet("wechat_binder", binder);
       console.log(`[wechat] scanner identity captured (${binder}) — consider adding it to allowedList so their DMs are explicit`);
+    }
+  } else if (command === "routines") {
+    // v1.2: the clock's config surface — list / validate / fire. No --repo needed.
+    const sub = positionals[1] ?? "list";
+    if (sub === "validate") {
+      const policy = readPolicyConfig({ skipRoutineValidation: true }); // report everything, die on nothing
+      const v = validateRoutines(policy);
+      const opsThreads = new Set(Object.values(engine.opsRoutes()));
+      for (const e of v.errors) console.log(`error:   ${e}`);
+      for (const w of v.warnings) console.log(`warning: ${w}`);
+      for (const d of v.definitions) {
+        if (opsThreads.has(d.reportTo)) continue; // the good case: a registered ops thread
+        const seen = engine.db.prepare("SELECT 1 FROM trigger WHERE thread_id = ? LIMIT 1").get(d.reportTo);
+        console.log(`warning: routine "${d.id}" reports to ${d.reportTo} — ${seen ? "a seen thread, but not a registered ops thread" : "not a known ops thread and never seen by this engine (--db)"}; reachable, not guaranteed live`);
+      }
+      if (v.errors.length === 0 && v.warnings.length === 0) console.log(`ok: ${v.definitions.length} routine definition(s) valid`);
+      if (v.errors.length > 0) process.exitCode = 1; // let the finally close the engine first
+    } else if (sub === "fire") {
+      const id = positionals[2];
+      if (!id) die(`usage: dsh routines fire <id>${WITH_HELP}`);
+      const policy = readPolicyConfig();
+      engine.setPolicyIfChanged(policy);
+      const d = routineDefinitions(policy).find((x) => x.id === id);
+      if (!d) die(`unknown routine id "${id}" — try 'dsh routines list'`);
+      const nowMs = minuteFloor(Date.now());
+      const t = routineTrigger(d, nowMs, { manual: true });
+      const gate = evaluateGate(policy, t);
+      const assessment = gate.strength === "inferred" ? await buildAssessor().assess(t) : "positive";
+      const batch = [classify(t, policy, assessment)];
+      for (const o of batch) console.log(formatOutcome(o));
+      const positions = { ...engine.sourceState("timer").positions, [lastKey(d.id)]: nowMs };
+      const report = engine.ingest(batch, { timer: { positions } }); // routine-last = now, same transaction
+      for (const r of report.refusals) console.log(`[REFUSED] ${r}`);
+      console.log(`— fresh=${report.fresh} duplicates=${report.duplicates} ticketsOpened=${report.ticketsOpened} joined=${report.joined} (routine-last=${new Date(nowMs).toISOString()})`);
+      console.log("replies are queued in the outbox — the watch daemon (same --db) drains them into the report thread");
+    } else if (sub === "list") {
+      const policy = readPolicyConfig();
+      const defs = routineDefinitions(policy);
+      const positions = engine.sourceState("timer").positions;
+      const nowMs = minuteFloor(Date.now());
+      const enabled = routinesEnabled(policy);
+      if (defs.length === 0) {
+        console.log(enabled ? "no routine definitions in this policy" : "routines absent or disabled in this policy — nothing fires by default");
+      }
+      const humanIn = (ms: number) => (ms < 3_600_000 ? `in ${Math.round(ms / 60_000)}m` : `in ${Math.round(ms / 3_600_000)}h`);
+      for (const d of defs) {
+        const last = positions[lastKey(d.id)];
+        try {
+          const next = nextRoutineFire(d, last, nowMs);
+          const when = next <= nowMs
+            ? `${new Date(next).toISOString()} (overdue — catch-up fires on the next sweep)`
+            : `${new Date(next).toISOString()} (${humanIn(next - nowMs)})`;
+          console.log(`${d.id}  ${renderSchedule(d)}  next ${when}  → ${d.reportTo} [${threadIdToScope(d.reportTo)}]${enabled ? "" : "  (routines disabled)"}`);
+        } catch (e) {
+          console.log(`${d.id}  ${renderSchedule(d)}  schedule error: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+    } else {
+      die(`unknown routines subcommand: ${sub} (list | validate | fire)${WITH_HELP}`);
     }
   } else if (command === "health") {
     // Watchdog's read-only体检 (v0.9-1): no writes, no replies — safe at any time.

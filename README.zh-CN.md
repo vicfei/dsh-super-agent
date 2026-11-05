@@ -84,6 +84,10 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 **IM 远程审批面(v1.1)。** 人的审批面,装进口袋——按[设计文档](docs/designs/im-approval-surface.md)实现。开启 `policy.approval` 后,allowedList 成员首次 IM 私聊 bot 即注册其 **ops 线程**;待决事项送达该线程,**单个数字**即处置:needs-person 工单(`1` 重新排队 · `2` 停止 · `3` 详情)与预演完成的投机工单(`1` promote——交付闸 · `2` 丢弃 · `3` 详情)。防误触是结构性的:仅全等单数字、**破坏性操作双确认**(5 分钟内第二个 `2`)、60 分钟时效、每线程 newest-wins 单 pending、每个动作都有回执——以及两条设计上的硬边界:**GitHub 合并审批永远留在 GitHub**(身份是结构性的),审批面永远改不了策略、开不了工。群里的数字、陌生人的数字、带字的数字,都只是聊天。
 
+<p align="center"><img src="docs/demo-wechat-approval.png" alt="微信对话:FAILTEST 任务失败进入 needs-person,🔑 审批请求送达,数字 3、1、2、2 走完 详情 → 重跑(worker 再失败、新 🔑)→ 双确认停止" width="380"></p>
+
+*A1 实测(2026-11-05)真实对话记录,仅脱敏标识:一条微信私聊走完整个状态机——`FAILTEST` 失败进入 needs-person,🔑 请求送达,`3`(详情)→ `1`(重跑——worker 再跑再败,新 🔑 随即送达)→ `2` `2`(安全双确认停止工单)。*
+
 ## 文章概念逐条对照
 
 《Super-agent 设计探索》里每个著名概念,以及它在本仓库的位置:

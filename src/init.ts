@@ -349,8 +349,13 @@ export function loadAnswersFile(path: string): InitAnswers {
   return answers;
 }
 
-/** Auto-detect what the wizard would have detected (bwrap) so templates stay honest. */
+/** The confinement wrapper for this platform: bwrap on Linux, the built-in sandbox-exec on macOS. */
+export function sandboxWrapperBin(): string {
+  return process.platform === "darwin" ? "sandbox-exec" : "bwrap";
+}
+
+/** Auto-detect what the wizard would have detected (the sandbox wrapper) so templates stay honest. */
 export async function applyRuntimeDetection(a: InitAnswers, probe: InitDeps["probe"] = shellProbe): Promise<InitAnswers> {
-  if (!a.sandbox.enabled && (await which("bwrap", probe))) return { ...a, sandbox: { enabled: true, allowNetwork: false } };
+  if (!a.sandbox.enabled && (await which(sandboxWrapperBin(), probe))) return { ...a, sandbox: { enabled: true, allowNetwork: false } };
   return a;
 }

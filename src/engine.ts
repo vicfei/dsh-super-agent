@@ -510,6 +510,22 @@ export class Engine {
     return r.changes > 0;
   }
 
+  // ── v1.2 P2: the approval-request file protocol (worker's voice, never authority) ──
+
+  /** The worker's written request (consumed from .dsh/approval-request.md), for rendering. */
+  recordWorkerRequest(ticketId: number, content: string): void {
+    this.kvSet(`approval-file:${ticketId}`, content.slice(0, 2000));
+  }
+
+  workerRequest(ticketId: number): string | null {
+    return this.kvGet(`approval-file:${ticketId}`);
+  }
+
+  /** Guidance the next run sees (owner-approved request context); consumed on claim. */
+  setTicketNote(ticketId: number, note: string): void {
+    this.kvSet(`ticket-note:${ticketId}`, note.slice(0, 2000));
+  }
+
   // ── person commands (panel command acting directly — docs/002) ───────────
 
   /** v1.0 deliver gate: a person promotes a speculative ticket — delivery is authorized. */
@@ -569,7 +585,14 @@ export class Engine {
       const original = String(r.body);
       const parts: string[] = [original];
       const spills: SpillFile[] = [];
+      // v1.2 P2: the owner-approved request rides along as guidance — consumed on claim
+      const note = this.kvGet(`ticket-note:${id}`);
       let budget = INLINE_BUDGET - original.length;
+      if (note) {
+        parts.push(`--- owner note (approved request) ---\n${note}`);
+        this.kvDelete(`ticket-note:${id}`);
+        budget -= note.length;
+      }
       for (const f of followupsOf.all(id) as Record<string, unknown>[]) {
         const header = `--- follow-up ${String(f.ts)} by @${String(f.author_login)} ---`;
         const full = String(f.body);

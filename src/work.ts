@@ -2,7 +2,7 @@
 // record the assignment, report into the thread (docs/003: reports; docs/004: report style).
 // Runs after commit: the Engine state transitions first, the subprocess and posting after.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { clipReply } from "./clip.js";
 import type { Engine, SpillFile } from "./engine.js";
@@ -136,8 +136,20 @@ export async function runWork(
       continue;
     }
 
-    engine.endAssignment(assignmentId, result.exitCode, result.timedOut, result.output);
     const ok = !result.timedOut && result.exitCode === 0;
+    // v1.2 P2: the worker asked for a person — the run "did not complete" whatever its exit
+    // code says (a clean exit still lands in needs-person); the request becomes the
+    // structured approval ask, rendered on the surface.
+    const request = consumeApprovalRequest(result.worktree);
+    if (request) {
+      engine.endAssignment(assignmentId, ok ? null : result.exitCode, result.timedOut, result.output);
+      engine.recordWorkerRequest(t.id, request.content);
+      engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId,
+        clipReply(`Ticket #${t.id}: the worker asked for a person.\n\n${request.content}\n\nThis is by an automated agent, not a human.`, 150));
+      reports.push({ ticketId: t.id, assignmentId, outcome: "failed", detail: "worker requested a person (approval file)" });
+      continue;
+    }
+    engine.endAssignment(assignmentId, result.exitCode, result.timedOut, result.output);
     if (ok && t.speculative) {
       // v1.0: rehearsal completes in total silence — no push, no PR, no reply. The deliver
       // gate is a human promote; until then nothing is said and nothing leaves the worktree.
@@ -178,6 +190,23 @@ function writeSpills(worktree: string, spills: SpillFile[]): void {
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, sp.content, "utf8");
   }
+}
+
+/**
+ * v1.2 P2 — the approval-request file protocol: a worker that wants permission writes
+ * title/reason/requested-action to $DSH_APPROVAL_FILE and stops. The request is
+ * informative, never authoritative — the engine still owns every transition; the file
+ * is one-way (worker writes, engine reads; nothing in it can flip a gate by itself).
+ * Consumed here: moved under .dsh/approval-requested/ so a re-run starts clean.
+ */
+export function consumeApprovalRequest(worktree: string): { content: string } | null {
+  const file = join(worktree, ".dsh", "approval-request.md");
+  if (!existsSync(file)) return null;
+  const content = readFileSync(file, "utf8").trim();
+  const done = join(worktree, ".dsh", "approval-requested");
+  mkdirSync(done, { recursive: true });
+  renameSync(file, join(done, `${Date.now()}.md`));
+  return content ? { content } : null;
 }
 
 function reportBody(ticketId: number, r: ExecutorResult): string {

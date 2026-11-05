@@ -1,6 +1,6 @@
-# Local web UI — the read-only dashboard (v1.3, slice 1)
+# Local web UI — the read-only dashboard (v1.3)
 
-> Status: slice 1 implemented (this file ships with it). The competition proved the
+> Status: **slices 1–2 implemented**. The competition proved the
 > onboarding half of the story (opensuperagent's web form); the operations half — one
 > honest page of what the agent is doing — is ours to define. The design constraint is
 > inherited from the panel (v0.4): **localhost-only, zero runtime dependencies, no
@@ -29,12 +29,15 @@ The panel's `/api/state` gains what v1.2 made observable:
 - **health** — the watchdog's read-only vitals (stage counts, oldest stuck ages,
   effect backlog) surfaced as a status line: the daemon's pulse at a glance.
 
-### Slice 2 — doctor, embedded
+### Slice 2 (shipped) — doctor, embedded
 
 Every doctor check is already a pure function over injectable facts; slice 2 passes
 the watch daemon's env/executor config into the panel and renders the check list
 (green/yellow/red, exit-code semantics preserved). The support surface ("paste
-`dsh doctor` output") becomes "look at your panel".
+`dsh doctor` output") becomes "look at your panel". Implementation notes: the panel
+**never probes network** (`probeNetwork: false`, always); probes are cached 60s
+server-side so the page's 3s polling never spawns subprocess storms; without a host
+context (`dsh watch` / `dsh panel` wiring) the section renders an honest "not wired".
 
 ### Slice 3 — audit depth
 

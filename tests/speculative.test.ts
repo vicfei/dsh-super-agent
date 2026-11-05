@@ -129,4 +129,25 @@ describe("silent run + human promote delivery", () => {
     expect(execSync(`git -C ${JSON.stringify(originGit)} log -1 --format=%s dsh/ticket-1`).toString().trim()).toBe("rehearsed fix");
     expect(engine.deliveries()[0]).toMatchObject({ prNumber: 77, state: "open" });
   });
+
+  it("promoted but empty worktree: logged once, then out of the sweep for good (no per-cycle replay)", async () => {
+    engine.setPolicyIfChanged(specPolicy);
+    engine.ingest([shadowItem(1)]);
+    const { repoDir, client } = gitHarness();
+    const executor = new Executor({
+      command: "true", // rehearses without committing anything
+      repoDir, workRoot: join(dir, "work"), timeoutMs: 30_000, maxWorkers: 1, blockedCommands: [],
+    });
+    await runWork(engine, executor, "o/r", client);
+    engine.promoteTicket(1, "panel");
+
+    const logs: string[] = [];
+    const n1 = await runPromoteSweep(engine, executor, client, "o/r", [], (l) => logs.push(l));
+    expect(n1).toBe(0);
+    expect(logs).toHaveLength(1); // "no commits — nothing to deliver", exactly once
+    expect(logs[0]).toContain("no commits");
+    const n2 = await runPromoteSweep(engine, executor, client, "o/r", [], (l) => logs.push(l));
+    expect(n2).toBe(0);
+    expect(logs).toHaveLength(1); // the next sweep is silent — settled, not retried
+  });
 });

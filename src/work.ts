@@ -244,6 +244,7 @@ export async function runPromoteSweep(
       const count = Number(await git(worktree, ["rev-list", "--count", `${baseSha}..HEAD`]));
       if (count === 0) {
         log(`#${t.id} promoted but the worktree has no commits — nothing to deliver`);
+        engine.markPromoteEmpty(t.id); // settled: logged once, out of the sweep for good
         continue;
       }
       const result = { worktree, baseSha, exitCode: 0, timedOut: false, output: "" } as ExecutorResult;

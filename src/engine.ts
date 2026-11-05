@@ -539,6 +539,11 @@ export class Engine {
   }
 
   /** Promoted, work done, not yet delivered — the watch promote sweep's work list. */
+  /** Mark a promoted ticket as "delivered nothing" (empty worktree) — logged once, then out of the sweep. */
+  markPromoteEmpty(id: number): void {
+    this.kvSet(`promote-empty:${id}`, new Date().toISOString());
+  }
+
   promotedPendingDelivery(): { id: number; threadId: string; opener: string }[] {
     const rows = this.db.prepare(`
       SELECT t.id, t.thread_id, t.opener_login FROM ticket t
@@ -546,7 +551,9 @@ export class Engine {
         AND EXISTS (SELECT 1 FROM assignment a WHERE a.ticket_id = t.id AND a.state = 'ended' AND a.exit_code = 0)
         AND NOT EXISTS (SELECT 1 FROM delivery d WHERE d.ticket_id = t.id)
       ORDER BY t.id`).all() as Record<string, unknown>[];
-    return rows.map((r) => ({ id: Number(r.id), threadId: String(r.thread_id), opener: String(r.opener_login) }));
+    return rows
+      .map((r) => ({ id: Number(r.id), threadId: String(r.thread_id), opener: String(r.opener_login) }))
+      .filter((t) => this.kvGet(`promote-empty:${t.id}`) === null); // empty-workroom promotes are settled, not retried
   }
 
   /** A person's stop withdraws the Mandate and ends the Ticket. */

@@ -1,12 +1,27 @@
 // Panel — one page listing only what awaits a human (docs/000: "A healthy state takes no space";
 // docs/005: minimal panel). Zero runtime deps: node:http + inline HTML. Bind localhost.
+// v1.3 slice 1 (docs/designs/local-web-ui.md): the read model grows into a dashboard —
+// routines with their next fire (the same truth `dsh routines list` prints) and the
+// watchdog's health vitals. Reads only; writes stay on the acting surfaces.
 
 import { createServer, type Server } from "node:http";
 import { readFileSync } from "node:fs";
+import type { Policy } from "./domain.js";
 import type { Engine } from "./engine.js";
-
+import { healthReport } from "./watchdog.js";
+import { lastKey, nextRoutineFire, renderSchedule, routineDefinitions, routinesEnabled } from "./routines.js";
 
 const PAGE = readFileSync(new URL("./panel.html", import.meta.url), "utf8");
+
+const NO_POLICY: Policy = { version: 0, allowedList: [], botList: [], acceptMode: "off", table: [] };
+
+export interface RoutinePanelItem {
+  id: string;
+  schedule: string;
+  next: string;
+  overdue: boolean;
+  reportTo: string;
+}
 
 export interface PanelState {
   policy: ReturnType<Engine["policy"]>;
@@ -14,6 +29,10 @@ export interface PanelState {
   decisions: ReturnType<Engine["decisions"]>;
   deliveries: ReturnType<Engine["deliveries"]>;
   approvals: ReturnType<Engine["pendingApprovals"]>;
+  /** v1.3: the daemon's pulse — stage counts, oldest stuck ages, effect backlog. */
+  health: ReturnType<typeof healthReport>;
+  /** v1.3: the clock — each routine with its next fire, from the engine's timer positions. */
+  routines: { enabled: boolean; items: RoutinePanelItem[] };
 }
 
 export function startPanel(engine: Engine, port: number, host = "127.0.0.1"): Promise<Server> {
@@ -29,12 +48,26 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1"): Pr
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/state") {
+      const policy = engine.policy() ?? NO_POLICY;
+      const positions = engine.sourceState("timer").positions;
+      const now = Date.now();
+      const items: RoutinePanelItem[] = routineDefinitions(policy).map((d) => {
+        const base = { id: d.id, schedule: renderSchedule(d), reportTo: d.reportTo };
+        try {
+          const next = nextRoutineFire(d, positions[lastKey(d.id)], now);
+          return { ...base, next: new Date(next).toISOString(), overdue: next <= now };
+        } catch {
+          return { ...base, next: "(schedule error)", overdue: false };
+        }
+      });
       const state: PanelState = {
         policy: engine.policy(),
         tickets: engine.tickets(),
         decisions: engine.decisions(50),
         deliveries: engine.deliveries(30),
         approvals: engine.pendingApprovals(),
+        health: healthReport(engine),
+        routines: { enabled: routinesEnabled(policy), items },
       };
       send(200, "application/json", JSON.stringify(state));
       return;

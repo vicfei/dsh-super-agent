@@ -41,7 +41,10 @@ export function llmAssessor(opts: LlmAssessorOptions): Assessor {
           body: JSON.stringify({
             model: opts.model,
             temperature: 0,
-            max_tokens: 8,
+            // reasoning models spend tokens on the chain of thought before content — a tight
+            // cap yields finish_reason "length" with EMPTY content (live finding: deepseek-v4-flash),
+            // which would fail every assessment closed. 512 leaves room for a short CoT + the one word.
+            max_tokens: 512,
             messages: [
               { role: "system", content: SYSTEM },
               {

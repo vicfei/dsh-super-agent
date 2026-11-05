@@ -18,6 +18,8 @@ Commands:
   panel     serve the awaiting-human panel (http://127.0.0.1:8787)
   merge     sweep open ticket PRs — merge those meeting policy.merge requirements (default off)
   routines  list | validate | fire <id> — scheduled timer triggers through the admission gate
+  init      six-step wizard writing ./dsh/policy.json + ./dsh/executor.json (--template minimal|dogfood)
+  doctor    read-only checks over policy/executor/env/db — exit 0 clean · 1 warnings · 2 failures
   health    read-only体检: stage counts, oldest stuck ages, effect backlog (watchdog's eyes)
   wechat-login  iLink QR login: scan with WeChat, credentials land in the engine db
   help      show this usage
@@ -33,6 +35,11 @@ Common options:
   --interval <seconds>      watch poll interval (±20% jitter)
   --no-panel                watch without the panel server
   --post                    poll also posts queued replies (needs a token)
+  --template <name>         init: minimal | dogfood (non-interactive, CI-testable)
+  --dir <dir>               init: where the two configs go (default ./dsh)
+  --force                   init: overwrite existing configs (leaves .bak.<ts> backups)
+  --answers <file>          init: scripted answers (schema = the template file)
+  --probe-network           doctor: whoami / repo permission / channel liveness (network)
 
 Environment: GITHUB_TOKEN, or GitHub App auth (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY[_PATH],
 optional GITHUB_APP_INSTALLATION_ID); Feishu channel (FEISHU_APP_ID + FEISHU_APP_SECRET,

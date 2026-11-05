@@ -156,8 +156,28 @@ describe("WechatReplyChannel", () => {
     expect(sent.group_id).toBe("g1");
     expect(sent.session_id).toBe("s9");
     expect(sent.message_type).toBe(2);
+    expect(sent.message_state).toBe(2); // FINISH — the protocol's terminal send state
+    expect(sent.client_id).toMatch(/[0-9a-f-]{36}/); // per-message uuid — the protocol's dedup key
     expect(sent.context_token).toBe("ctx_g1");
     expect(sent.item_list?.[0]?.text_item?.text).toBe("done: fixed");
+  });
+
+  it("every outbound message carries a UNIQUE client_id — same/absent ids get server-deduped into the void (live finding 2026-11-05: first message lands, the rest vanish, API still returns message_id)", async () => {
+    const store = new MemoryWechatStore();
+    store.saveAuth({ token: "t0", baseUrl: "https://ilink.test" });
+    store.saveRoute("wechat:peer/a", { toUserId: "a", contextToken: "ctx" });
+    const clientIds: string[] = [];
+    const fetchImpl = mockFetch((_u, init) => {
+      const msg = JSON.parse(String(init?.body)).msg as WeixinMessage;
+      clientIds.push(msg.client_id ?? "");
+      return { message_id: `m${clientIds.length}` };
+    });
+    const ch = new WechatReplyChannel(store, (auth) => new WechatApiClient({ token: auth.token, baseUrl: auth.baseUrl, fetchImpl }));
+    await ch.deliver("wechat:peer/a", "one"); // first message
+    await ch.deliver("wechat:peer/a", "two"); // second message seconds later — must NOT dedup away
+    await ch.deliver("wechat:peer/a", "p ".repeat(1200)); // chunked → multiple parts, each unique too
+    expect(clientIds.length).toBeGreaterThan(3);
+    expect(new Set(clientIds).size).toBe(clientIds.length); // all unique, none empty
   });
 
   it("statusless sendmessage success (verified live): absent ret = delivered", async () => {

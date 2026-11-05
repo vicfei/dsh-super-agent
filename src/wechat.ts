@@ -7,7 +7,7 @@
 // Persistence is injected (Engine kv in production, in-memory in tests): credentials, the
 // getupdates cursor, and per-thread reply routes {toUserId, groupId, sessionId, contextToken}.
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { Trigger } from "./domain.js";
 import type { ReplyChannel, Source, SourceState } from "./source.js";
 
@@ -24,6 +24,11 @@ export interface WeixinMessage {
   group_id?: string;
   /** 1 = USER, 2 = BOT. */
   message_type?: number;
+  /** 1 = sending, 2 = FINISH. Outbound replies send 2. */
+  message_state?: number;
+  /** Per-message unique uuid — the protocol's dedup key. Absent/repeated values make the
+   * server silently drop the message after the first one (live finding, 2026-11-05). */
+  client_id?: string;
   create_time_ms?: number;
   item_list?: { type?: number; text_item?: { text?: string } }[];
   context_token?: string;
@@ -374,6 +379,8 @@ export class WechatReplyChannel implements ReplyChannel {
         ...(route.groupId ? { group_id: route.groupId } : {}),
         ...(route.sessionId ? { session_id: route.sessionId } : {}),
         message_type: 2, // BOT
+        message_state: 2, // FINISH
+        client_id: randomUUID(), // the protocol's dedup key — unique per message, or the server drops the rest
         item_list: [{ type: 1, text_item: { text: part } }],
         context_token: route.contextToken, // "回复时必须原样回传" — routes the reply
       });

@@ -1,4 +1,5 @@
 {
+  "$comment": "dsh-super-agent executor — confinement is the norm, off is the exception (v1.2). enabled:true requires bubblewrap on Linux (apt install bubblewrap) and uses the built-in sandbox-exec on macOS; dsh doctor verifies the wrapper. Set enabled:false only if you must, and know that the worker then runs unsandboxed.",
   "command": "claude -p \"$(cat \"$DSH_PROMPT_FILE\")\"",
   "repoDir": ".",
   "workRoot": ".state/work",
@@ -10,7 +11,7 @@
     "curl | sh"
   ],
   "sandbox": {
-    "enabled": false,
+    "enabled": true,
     "allowNetwork": false
   }
 }

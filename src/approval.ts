@@ -100,6 +100,11 @@ export function applyApproval(engine: Engine, opsThread: string, digit: 1 | 2 | 
     return ok ? `promote:${req.ticketId}` : `promote-noop:${req.ticketId}`;
   }
   const ok = engine.requeueTicket(req.ticketId);
+  if (ok) {
+    // v1.2 P2: approve = resume with the request as guidance — a note, never a capability token
+    const request = engine.workerRequest(req.ticketId);
+    if (request) engine.setTicketNote(req.ticketId, `The owner approved your earlier request:\n${request}`);
+  }
   engine.enqueueReply(`approval-receipt:${req.id}`, opsThread, ok
     ? `✅ Ticket #${req.ticketId} requeued — the worker will take another run and report here.`
     : `Ticket #${req.ticketId} was not awaiting a person — nothing requeued.`);
@@ -150,6 +155,9 @@ export async function runApprovalSweep(
 function ticketLine(engine: Engine, ticketId: number): string {
   const t = engine.tickets().find((x) => x.id === ticketId);
   if (!t) return "(unknown)";
+  // v1.2 P2: a worker-written approval request outranks the trigger excerpt — it IS the ask
+  const request = engine.workerRequest(ticketId);
+  if (request) return `opener @${t.opener} · worker requested: ${request.replace(/\s+/g, " ").slice(0, 200)}`;
   const row = engine.db.prepare("SELECT substr(body, 1, 120) AS excerpt FROM trigger WHERE id = ?").get(t.triggerId) as { excerpt?: string } | undefined;
   return `opener @${t.opener} · ${(row?.excerpt ?? "").replace(/\n/g, " ")}`;
 }

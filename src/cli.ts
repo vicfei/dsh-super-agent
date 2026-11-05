@@ -148,7 +148,8 @@ if (command === "doctor") {
       wechatAuthPresent = false; // unreadable/missing table — "not logged in" is the honest answer
     }
   }
-  const bwrap = await shellProbe("which", ["bwrap"], 3000);
+  const { sandboxWrapperBin } = await import("./init.js");
+  const bwrap = await shellProbe("which", [sandboxWrapperBin()], 3000);
   const report = await runDoctor({
     nodeVersion: process.version,
     env: process.env as Record<string, string | undefined>,

@@ -130,11 +130,11 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   // sandbox
   const sandboxOn = input.executor?.sandbox?.enabled === true;
   if (sandboxOn) {
-    add("sandbox", input.bwrapPresent ? "ok" : "fail", input.bwrapPresent ? `sandbox: bwrap present; allowNetwork=${input.executor?.sandbox?.allowNetwork === true}` : "sandbox: enabled in config but bwrap NOT found — confinement is a claim, not a fact; install bubblewrap or disable");
+    add("sandbox", input.bwrapPresent ? "ok" : "fail", input.bwrapPresent ? `sandbox: wrapper present; allowNetwork=${input.executor?.sandbox?.allowNetwork === true}` : "sandbox: enabled in config but the confinement wrapper is NOT found — confinement is a claim, not a fact; install bubblewrap (linux) or disable");
   } else if (input.bwrapPresent) {
-    add("sandbox", "warn", "sandbox: bwrap present but disabled in executor config — confinement is the norm, --sandbox off is the exception");
+    add("sandbox", "warn", "sandbox: wrapper present but disabled in executor config — confinement is the norm, off is the exception");
   } else {
-    add("sandbox", "info", "sandbox: off (no bwrap found; install bubblewrap for confinement)");
+    add("sandbox", "info", "sandbox: off (no confinement wrapper found; install bubblewrap on linux)");
   }
 
   // env references

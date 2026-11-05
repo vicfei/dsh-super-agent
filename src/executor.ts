@@ -197,6 +197,7 @@ export class Executor {
       env: {
         DSH_DIR: dir,
         DSH_PROMPT_FILE: promptFile,
+        DSH_APPROVAL_FILE: join(dir, ".dsh", "approval-request.md"),
         DSH_TICKET: String(ticket.id),
         DSH_THREAD: ticket.threadId,
         DSH_REPO: repo,
@@ -225,5 +226,8 @@ export function renderPrompt(ticket: { id: number; threadId: string }, trigger: 
     "- Do the requested work inside this directory (a git worktree of the repository).",
     "- Your stdout is posted to the thread as the report — end it with a concise summary (≤150 words).",
     "- If the request is beyond what you can do here, say so plainly in the summary instead of improvising.",
+    "- To ask the owner for permission (something blocked here, an outward action), write title / reason /",
+    "  requested action to the file at $DSH_APPROVAL_FILE and stop — the owner decides from chat;",
+    "  nothing you write can flip a gate by itself.",
   ].join("\n");
 }

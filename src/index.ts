@@ -15,6 +15,26 @@ export { evaluateMerge, runMergeSweep, type MergeCheck, type MergeSweepLine } fr
 export { runWatchdogSweep, healthReport, watchdogPolicyOf, type WatchdogLine, type WatchdogPolicy, type HealthReport, type ProgressCheck } from "./watchdog.js";
 export { runPromoteSweep } from "./work.js";
 export { interceptApprovalCommands, runApprovalSweep, applyApproval, isApprovalDigit, approvalEnabled } from "./approval.js";
+export {
+  TimerSource,
+  parseCron,
+  nextCronMatch,
+  nextEveryMatch,
+  nextRoutineFire,
+  routineTrigger,
+  routineIntervalMs,
+  renderSchedule,
+  threadIdToScope,
+  validateRoutines,
+  routinesEnabled,
+  routineDefinitions,
+  lastKey,
+  minuteFloor,
+  localTz,
+  type CronSpec,
+  type RoutineValidation,
+  type Wall,
+} from "./routines.js";
 export { classify, formatOutcome, type PollOutcome } from "./runner.js";
 export { llmAssessor, stubAssessor, type Assessor } from "./assess.js";
 export { clipReply, wordCount } from "./clip.js";

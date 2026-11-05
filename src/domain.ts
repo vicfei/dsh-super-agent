@@ -8,11 +8,14 @@ export interface Actor {
   isBot: boolean;
 }
 
+/** Where a Trigger came from. `timer` = the clock (v1.2 routines) — a trigger like any other. */
+export type TriggerSource = "github" | "feishu" | "slack" | "wechat" | "telegram" | "timer";
+
 /** One immutable event with the Source's own metadata. Unit of audit and idempotence. */
 export interface Trigger {
   /** Source-scoped unique id; accepting twice yields one Ticket. */
   id: string;
-  source: "github" | "feishu" | "slack" | "wechat" | "telegram";
+  source: TriggerSource;
   /** Receiving scope — the admission table's row key. */
   scope: Scope;
   /** Triggers of one conversation, as defined by the Source (e.g. `github:owner/repo/issues/42`). */
@@ -78,6 +81,27 @@ export interface Policy {
   speculation?: Partial<SpeculationPolicy>;
   /** IM approval surface (v1.1). Absent = disabled — digits are just chat. */
   approval?: { enabled?: boolean };
+  /** Routines (v1.2): owner-authored timer triggers that still pass admission control.
+   * Absent or enabled:false = disabled — nothing fires by default. */
+  routines?: RoutinesPolicy;
+}
+
+/** One scheduled routine: a prompt plus when to fire it and where to report. */
+export interface RoutineDefinition {
+  /** `^[a-z0-9][a-z0-9-]{0,63}$`; unique; stable identity for the timer Source's state. */
+  id: string;
+  /** Instruction to the agent, exactly like a chat message (1–4096 chars). */
+  prompt: string;
+  /** Exactly one of cron (5-field, minute resolution) or every (interval). tz = IANA, default host local. */
+  schedule: { cron?: string; every?: { minutes?: number; hours?: number }; tz?: string };
+  /** An existing thread on any live channel (`wechat:…`, `github:owner/repo/issues/N`, …). */
+  reportTo: string;
+}
+
+export interface RoutinesPolicy {
+  /** Absent/false = disabled — the clock stays silent. */
+  enabled?: boolean;
+  definitions?: RoutineDefinition[];
 }
 
 /**

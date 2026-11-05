@@ -4,6 +4,7 @@
 // only for inferred strength — natural language can never turn an ignore into an admit.
 
 import type { Cell, Policy, Strength, Trigger } from "./domain.js";
+import { routineDefinitions, routineIdOfLogin, routinesEnabled } from "./routines.js";
 
 export type GateResult =
   | { strength: Strength; basis: string }
@@ -17,8 +18,29 @@ function rowOf(policy: Policy, trigger: Trigger) {
   return policy.table.find((r) => r.scope === trigger.scope) ?? closed;
 }
 
+/**
+ * A timer trigger (v1.2 routines): admitted iff its routine exists in the loaded policy —
+ * config IS the owner's voice — AND the admission row for its scope says so. It then behaves
+ * exactly like any unlisted sender addressing the agent: strength ceiling "inferred", so
+ * the ladder (off/observe/auto), the Slow Path, and speculation all apply by construction.
+ * The clock does not create scope and does not escalate trust.
+ */
+function evaluateTimerGate(policy: Policy, trigger: Trigger): GateResult {
+  const id = routineIdOfLogin(trigger.author.login) ?? "(unknown)";
+  const def = routinesEnabled(policy) ? routineDefinitions(policy).find((d) => d.id === id) : undefined;
+  if (!def) return { strength: null, basis: `timer trigger for routine ${id} not in loaded policy — the clock does not create scope` };
+  if (trigger.threadId !== def.reportTo) {
+    return { strength: null, basis: `timer trigger for routine ${id} points at ${trigger.threadId}, not its reportTo — not admitted` };
+  }
+  const row = rowOf(policy, trigger);
+  return row.unlistedAddressing === "inferred"
+    ? { strength: "inferred", basis: `routine ${id} (owner-configured timer) addressing agent` }
+    : { strength: null, basis: `routine ${id} not admitted by cell (scope ${trigger.scope} unlistedAddressing = ${row.unlistedAddressing})` };
+}
+
 /** A listed bot can produce an inferred candidate, never an explicit request. */
 export function evaluateGate(policy: Policy, trigger: Trigger): GateResult {
+  if (trigger.source === "timer") return evaluateTimerGate(policy, trigger);
   const row = rowOf(policy, trigger);
   const listed = policy.allowedList.map(lc).includes(lc(trigger.author.login));
   const knownBot = trigger.author.isBot || policy.botList.map(lc).includes(lc(trigger.author.login));

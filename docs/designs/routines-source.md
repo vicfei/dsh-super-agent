@@ -1,6 +1,7 @@
-# Routines (timer Source) — design (v1.2 candidate)
+# Routines (timer Source) — design (v1.2)
 
-> Status: design. Every trigger so far came from a human message. Routines are the first
+> Status: **implemented** — see §8 for the implementation notes (three places where the
+> shipped code narrows this text, and why). Every trigger so far came from a human message. Routines are the first
 > triggers that come from **the clock** — so the design burden is inverted: instead of asking
 > "how do we trust scheduled work", we make scheduled work knock on the same door as everyone
 > else. **A routine is owner-authored config that still passes admission control.** No bypass,
@@ -161,3 +162,29 @@ scheduled". `fire` is the dogfood tool: verify the full pipeline (gate → ticke
 - context join: open ticket on thread → routine trigger becomes followup context.
 - load guardrails: dup id, bad tz, both cron+every, 33 definitions → load error.
 - sweep isolation: one throwing routine does not block others.
+
+## 8. Implementation notes (what shipped, and the three deltas)
+
+1. **State rides the standard Source positions.** The last honored slot lives in the
+   engine's `positions:timer` map under `last:<id>` (epoch ms), not a separate
+   `routine-last:<id>` kv key — the exactly-once guarantee is identical (persisted in the
+   same ingest transaction as the fired triggers, the same pattern as every other Source),
+   and it needed zero schema changes.
+2. **First enable starts at now, not epoch.** With no state, the first match is computed
+   strictly after *now* — enabling a routine never replays history (a literal "absent =
+   epoch" would fire one 1970-era slot per sweep for a week). `dsh routines fire` is the
+   tool for "prove the pipeline right now". Missed-slot catch-up (restart drift) still
+   honors the *first* missed schedule with a 7-day horizon: slots older than that are
+   dropped, not replayed — a digest three days late is useful, fifty is spam. Replays run
+   one slot per sweep and coalesce onto the thread's open ticket, so they converge.
+3. **The clock never resumes.** A timer trigger whose thread's previous (same-opener)
+   ticket already *ended* opens fresh work; the person-resume rule of docs/002 stays a
+   person rule. Open tickets are joined as context regardless of opener (§3).
+4. Confirmed by construction (worth saying out loud): the trigger's `author` is
+   `routine:<id>` with `isBot: false`, so the gate evaluates it as an **unlisted sender
+   addressing the agent** — the row cell that decides is `unlistedAddressing`, the strength
+   ceiling is "inferred", and the ladder/Slow Path/speculation all apply unchanged. A
+   routine fires only when its scope's `unlistedAddressing` cell is `"inferred"`;
+   `dsh routines validate` warns when it isn't.
+5. Minor pins: DST fall-back folds resolve to the earlier occurrence; `every` intervals
+   anchor at epoch UTC (a 60-minute routine fires on the top of each hour).

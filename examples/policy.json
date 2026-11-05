@@ -78,5 +78,19 @@
   },
   "approval": {
     "enabled": false
+  },
+  "routines": {
+    "enabled": false,
+    "definitions": [
+      {
+        "id": "morning-digest",
+        "prompt": "Summarize open tickets, stale PRs, and anything the watchdog nudged. One paragraph.",
+        "schedule": {
+          "cron": "0 8 * * 1-5",
+          "tz": "Asia/Shanghai"
+        },
+        "reportTo": "github:vicfei/dsh-super-agent/issues/1"
+      }
+    ]
   }
 }

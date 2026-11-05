@@ -355,9 +355,28 @@ export class Engine {
           // Subscription bypass (v0.7-1, issue #40): a thread with a live ticket fans out to that
           // ticket without re-evaluation — the opener's follow-up joins the ticket's context
           // instead of spawning a duplicate. Same trust as the automatic resume below.
+          // v1.2: a routine firing into a thread with ANY live ticket joins it the same way —
+          // "hourly soak" on one thread can never pile up, whoever opened the live work.
           const open = this.db
             .prepare("SELECT id FROM ticket WHERE thread_id = ? AND opener_login = ? AND state = 'open' ORDER BY id DESC LIMIT 1")
             .get(t.threadId, t.author.login) as { id: number } | undefined;
+          if (!open && t.source === "timer") {
+            const anyOpen = this.db
+              .prepare("SELECT id FROM ticket WHERE thread_id = ? AND state = 'open' ORDER BY id DESC LIMIT 1")
+              .get(t.threadId) as { id: number } | undefined;
+            if (anyOpen) {
+              this.db.prepare("INSERT INTO ticket_followup (ticket_id, trigger_id, ts) VALUES (?, ?, ?)").run(anyOpen.id, t.id, now);
+              this.db.prepare("UPDATE ticket SET updated_at = ? WHERE id = ?").run(now, anyOpen.id);
+              report.joined++;
+              continue;
+            }
+            // the clock never resumes ended tickets — each fire is new work (v1.2 design note)
+            const info = insertTicket.run(t.threadId, t.id, t.author.login, strength, policyVersion, basis, now, now);
+            const ticketId = Number(info.lastInsertRowid);
+            report.ticketsOpened++;
+            enqueue.run("reply", `ticket-open:${ticketId}`, JSON.stringify(replyPayload(t, ticketId, "opened", strength as Strength)), now, now, now);
+            continue;
+          }
           if (open) {
             this.db.prepare("INSERT INTO ticket_followup (ticket_id, trigger_id, ts) VALUES (?, ?, ?)").run(open.id, t.id, now);
             this.db.prepare("UPDATE ticket SET updated_at = ? WHERE id = ?").run(now, open.id);

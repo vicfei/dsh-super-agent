@@ -82,6 +82,27 @@ describe("runApprovalSweep rendering", () => {
     expect(await runApprovalSweep(engine, policy, [ch])).toBe(0);
     expect(engine.pendingApprovals()).toHaveLength(1);
   });
+
+  it("several eligible tickets at once: newest-wins supersedes the REQUEST rows, but no render storm (live finding 2026-11-06)", async () => {
+    engine.ingest([accept(imItem(1, "job one")), accept(imItem(2, "job two", "alice", "wechat:peer/wxid_second"))]);
+    engine.db.prepare("UPDATE ticket SET state = 'ended', speculative = 1").run();
+    const ch = channel();
+    const first = await runApprovalSweep(engine, policy, [ch]);
+    expect(first).toBe(2); // both rendered once, this sweep
+    const second = await runApprovalSweep(engine, policy, [ch]);
+    expect(second).toBe(0); // …and never again — even though openApprovalRequest superseded the older row
+    const keys = (engine.db.prepare("SELECT key FROM effect WHERE key LIKE 'approval-req:%' ORDER BY id").all() as { key: string }[]).map((r) => r.key).sort();
+    expect(keys).toEqual(["approval-req:1", "approval-req:2"]); // exactly one ask per ticket
+  });
+
+  it("a terminally failed ask is not re-rendered either — the outbox owned the retries", async () => {
+    await setupNeedsPerson();
+    const ch = channel();
+    await runApprovalSweep(engine, policy, [ch]); // rendered + drained (delivered in the test channel)
+    const fx = engine.db.prepare("SELECT id FROM effect WHERE key = 'approval-req:1'").get() as { id: number };
+    engine.failEffect(fx.id, "ret=-2", false); // terminal — delivery gave up
+    expect(await runApprovalSweep(engine, policy, [ch])).toBe(0);
+  });
 });
 
 describe("digit routing (interceptApprovalCommands)", () => {

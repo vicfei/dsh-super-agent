@@ -109,7 +109,20 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       send(200, "application/json", JSON.stringify(state));
       return;
     }
-    if (req.method === "POST" && (url.pathname === "/api/mode" || url.pathname === "/api/stop")) {
+    if (req.method === "POST" && (url.pathname === "/api/mode" || url.pathname === "/api/stop" || url.pathname === "/api/promote")) {
+      // Loopback is not a CSRF exemption: a malicious page in ANY browser tab can fire a
+      // no-cors text/plain POST at 127.0.0.1. Refuse cross-origin requests outright and
+      // require the JSON content type (no-cors simple requests cannot send it).
+      const origin = req.headers.origin;
+      if (origin !== undefined && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
+        send(403, "application/json", JSON.stringify({ error: "cross-origin POST refused" }));
+        return;
+      }
+      const ctype = String(req.headers["content-type"] ?? "");
+      if (!ctype.startsWith("application/json")) {
+        send(415, "application/json", JSON.stringify({ error: "content-type must be application/json" }));
+        return;
+      }
       let body = "";
       req.on("data", (c) => (body += c));
       req.on("end", () => {

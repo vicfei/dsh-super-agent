@@ -98,9 +98,9 @@ describe("runApprovalSweep rendering", () => {
   it("a terminally failed ask is not re-rendered either — the outbox owned the retries", async () => {
     await setupNeedsPerson();
     const ch = channel();
-    await runApprovalSweep(engine, policy, [ch]);
-    const fx = engine.takeDue().find((f) => f.key === "approval-req:1");
-    engine.failEffect(fx!.id, "ret=-2", false); // terminal — delivery gave up
+    await runApprovalSweep(engine, policy, [ch]); // rendered + drained (delivered in the test channel)
+    const fx = engine.db.prepare("SELECT id FROM effect WHERE key = 'approval-req:1'").get() as { id: number };
+    engine.failEffect(fx.id, "ret=-2", false); // terminal — delivery gave up
     expect(await runApprovalSweep(engine, policy, [ch])).toBe(0);
   });
 });

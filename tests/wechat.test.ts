@@ -359,3 +359,41 @@ describe("typing heartbeat on the cold path (fix, 2026-11-06)", () => {
     expect(next.positions.typingAt).toBeGreaterThan(0); // throttle persists via the aborted branch
   });
 });
+
+describe("wechat-login --web (v1.3)", () => {
+  let dir: string; let engine: Engine;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "dsh-wxweb-")); engine = new Engine(join(dir, "e.db")); });
+  afterEach(() => { engine.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  it("the page drives the flow: QR → status → confirmed stores auth + binder and closes the server", async () => {
+    const { wechatLoginWeb, LOGIN_WEB_PAGE } = await import("../src/wechat-login-web.js");
+    let scanCount = 0;
+    const iLinkFetch = (async (url: string | URL) => {
+      const u = url.toString();
+      if (u.includes("get_bot_qrcode")) return new Response(JSON.stringify({ qrcode: "qr1", qrcode_img_content: "https://x/qr1" }), { headers: { "content-type": "application/json" } });
+      if (u.includes("get_qrcode_status")) {
+        scanCount++;
+        if (scanCount < 2) return new Response(JSON.stringify({ status: "wait" }), { headers: { "content-type": "application/json" } });
+        return new Response(JSON.stringify({ status: "confirmed", bot_token: "tok9", baseurl: "https://b.test", ilink_user_id: "binder-9" }), { headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`unexpected ${u}`);
+    }) as unknown as typeof fetch;
+    const { server, done } = await wechatLoginWeb({ engine, port: 0, iLinkFetch, qrOf: async () => "data:image/png;base64,AAA" });
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+
+    const page = await (await fetch(`${base}/`)).text();
+    expect(page).toContain("scan with WeChat");
+    expect(page).toContain(LOGIN_WEB_PAGE ? "Show QR code" : "");
+
+    const qr = (await (await fetch(`${base}/qr`, { method: "POST" })).json()) as { img: string; born: number };
+    expect(qr.img).toBe("data:image/png;base64,AAA");
+
+    expect(((await (await fetch(`${base}/status`)).json()) as { state: string }).state).toBe("wait");
+    const final = ((await (await fetch(`${base}/status`)).json()) as { state: string }).state;
+    expect(final).toBe("confirmed");
+    const { binder } = await done; // resolves once the server closed itself
+    expect(binder).toBe("binder-9");
+    const auth = JSON.parse(engine.kvGet("wechat_auth")!) as { token: string; baseUrl: string };
+    expect(auth).toEqual({ token: "tok9", baseUrl: "https://b.test" });
+  });
+});

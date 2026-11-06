@@ -69,6 +69,9 @@ export interface WechatStore {
   saveCursor(buf: string): void;
   loadRoute(threadId: string): WechatRoute | null;
   saveRoute(threadId: string, route: WechatRoute): void;
+  /** Optional generic kv — the production store exposes engine keys (e.g. wechat_binder). */
+  kvGet?(key: string): string | null;
+  kvSet?(key: string, value: string): void;
   /** Session expired (-14): drop everything, a new QR scan is required. */
   clearAll(): void;
 }
@@ -77,12 +80,15 @@ export class MemoryWechatStore implements WechatStore {
   private auth: WechatAuth | null = null;
   private cursor = "";
   private readonly routes = new Map<string, WechatRoute>();
+  private readonly kv = new Map<string, string>();
   loadAuth() { return this.auth; }
   saveAuth(auth: WechatAuth) { this.auth = auth; }
   loadCursor() { return this.cursor; }
   saveCursor(buf: string) { this.cursor = buf; }
   loadRoute(threadId: string) { return this.routes.get(threadId) ?? null; }
   saveRoute(threadId: string, route: WechatRoute) { this.routes.set(threadId, route); }
+  kvGet(key: string) { return this.kv.get(key) ?? null; }
+  kvSet(key: string, value: string) { this.kv.set(key, value); }
   clearAll() { this.auth = null; this.cursor = ""; this.routes.clear(); }
 }
 
@@ -110,6 +116,9 @@ export class EngineWechatStore implements WechatStore {
   saveCursor(buf: string): void {
     this.kv.kvSet("wechat_cursor", buf);
   }
+
+  kvGet(key: string): string | null { return this.kv.kvGet(key); }
+  kvSet(key: string, value: string): void { this.kv.kvSet(key, value); }
 
   loadRoute(threadId: string): WechatRoute | null {
     try {
@@ -181,6 +190,16 @@ export class WechatApiClient {
 
   getUpdates(getUpdatesBuf: string, signal?: AbortSignal): Promise<GetUpdatesResp> {
     return this.post<GetUpdatesResp>("ilink/bot/getupdates", { get_updates_buf: getUpdatesBuf }, signal);
+  }
+
+  /** Typing heartbeat plumbing (v1.2.1): getconfig carries ilink_user_id and returns the typing_ticket. */
+  getConfig(ilinkUserId: string): Promise<{ ret?: number; typing_ticket?: string; errmsg?: string }> {
+    return this.post("ilink/bot/getconfig", { ilink_user_id: ilinkUserId });
+  }
+
+  /** status 1 = typing, 2 = stopped. ret 0 = accepted (live-verified 2026-11-06). */
+  sendTyping(ilinkUserId: string, typingTicket: string, status: 1 | 2): Promise<{ ret?: number; errmsg?: string }> {
+    return this.post("ilink/bot/sendtyping", { ilink_user_id: ilinkUserId, typing_ticket: typingTicket, status });
   }
 
   sendMessage(msg: WeixinMessage): Promise<SendMessageResp> {
@@ -278,6 +297,8 @@ export interface WechatSourceOptions {
   apiBase?: string;
   fetchImpl?: typeof fetch;
   log?: (l: string) => void;
+  /** Typing heartbeat interval (default 45min). Set 0 to disable. */
+  typingEveryMs?: number;
 }
 
 export class WechatSource implements Source {
@@ -325,7 +346,31 @@ export class WechatSource implements Source {
         const t = wechatTriggerFromMessage(m);
         if (t && !opts.exclude?.has(t.id)) triggers.push(t);
       }
-      return { triggers, next: from };
+      const next: SourceState = { positions: { ...from.positions } };
+      // Typing heartbeat (v1.2.1): the send-side session ages out when the peer has been
+      // quiet for hours — proactive sends then fail with ret=-2 until fresh inbound traffic
+      // (live finding 2026-11-06: the 08:00 digest could not land at 08:00). A silent typing
+      // touch every interval keeps the session warm; every attempt (success OR failure)
+      // moves the throttle — a failing heartbeat must never become its own storm.
+      const lastTyping = Number(from.positions["typingAt"] ?? 0);
+      const typingEvery = this.opts.typingEveryMs ?? 45 * 60_000;
+      if (typingEvery > 0 && Date.now() - lastTyping > typingEvery) {
+        next.positions["typingAt"] = Date.now();
+        const binder = this.opts.store.kvGet?.("wechat_binder") ?? null;
+        if (binder) {
+          try {
+            const cfg = await client.getConfig(binder);
+            if (cfg.ret === 0 && cfg.typing_ticket) {
+              await client.sendTyping(binder, cfg.typing_ticket, 1);
+              await new Promise((r) => setTimeout(r, 300));
+              await client.sendTyping(binder, cfg.typing_ticket, 2);
+            }
+          } catch {
+            /* heartbeat is best-effort — never breaks polling */
+          }
+        }
+      }
+      return { triggers, next };
     }
     if (resp.errcode === -14 || resp.ret === -14) {
       this.opts.store.clearAll();

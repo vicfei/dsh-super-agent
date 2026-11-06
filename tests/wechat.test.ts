@@ -277,3 +277,60 @@ describe("EngineWechatStore", () => {
     expect(engine.kvGet("unrelated")).toBe("keep");
   });
 });
+
+describe("typing heartbeat (v1.2.1)", () => {
+  const auth = { token: "t0", baseUrl: "https://ilink.test" };
+  const polling = { msgs: [], get_updates_buf: "cur1" }; // statusless success shape
+
+  function heartbeats(fetchImpl: typeof fetch) {
+    return (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+      .map(([u, init]) => ({ url: u, body: String(init?.body ?? "") }))
+      .filter((c) => c.url.includes("typing") || c.url.includes("getconfig"));
+  }
+
+  it("fires on a cold session (getconfig → typing on → off) and persists the throttle in positions", async () => {
+    const store = new MemoryWechatStore();
+    store.saveAuth(auth);
+    store.kvSet("wechat_binder", "ilink-1");
+    const fetchImpl = mockFetch((url) =>
+      url.includes("getconfig") ? { ret: 0, typing_ticket: "tk1" }
+      : url.includes("sendtyping") ? { ret: 0 }
+      : polling);
+    const src = new WechatSource({ store, fetchImpl, pollTimeoutMs: 100, typingEveryMs: 60_000 });
+    const { next } = await src.collect({ positions: {} }, {});
+    const calls = heartbeats(fetchImpl as unknown as typeof fetch);
+    expect(calls.map((c) => c.url)).toEqual([
+      expect.stringContaining("getconfig"),
+      expect.stringContaining("sendtyping"),
+      expect.stringContaining("sendtyping"),
+    ]);
+    expect(next.positions.typingAt).toBeGreaterThan(0);
+  });
+
+  it("throttled within the interval — no second heartbeat", async () => {
+    const store = new MemoryWechatStore();
+    store.saveAuth(auth);
+    store.kvSet("wechat_binder", "ilink-1");
+    const fetchImpl = mockFetch((url) =>
+      url.includes("getconfig") ? { ret: 0, typing_ticket: "tk1" }
+      : url.includes("sendtyping") ? { ret: 0 }
+      : polling);
+    const src = new WechatSource({ store, fetchImpl, pollTimeoutMs: 100, typingEveryMs: 60_000 });
+    const { next } = await src.collect({ positions: { typingAt: Date.now() } }, {});
+    expect(heartbeats(fetchImpl as unknown as typeof fetch)).toHaveLength(0);
+    expect(next.positions.typingAt).toBeGreaterThan(Date.now() - 60_000); // passthrough untouched
+  });
+
+  it("a failing heartbeat marks the throttle anyway (never becomes its own storm) and never breaks polling", async () => {
+    const store = new MemoryWechatStore();
+    store.saveAuth(auth);
+    store.kvSet("wechat_binder", "ilink-1");
+    const fetchImpl = mockFetch((url) =>
+      url.includes("getconfig") ? { ret: -2, errmsg: "no" }
+      : polling);
+    const src = new WechatSource({ store, fetchImpl, pollTimeoutMs: 100, typingEveryMs: 60_000 });
+    const { triggers, next } = await src.collect({ positions: {} }, {});
+    expect(triggers).toHaveLength(0); // polling unaffected
+    expect(next.positions.typingAt).toBeGreaterThan(0); // throttled despite failure
+  });
+});

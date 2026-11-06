@@ -65,6 +65,8 @@ function parseOrDie() {
         answers: { type: "string" },
         // doctor (v1.2)
         "probe-network": { type: "boolean", default: false },
+        // wechat-login --web (v1.3)
+        web: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -438,6 +440,19 @@ try {
     await new Promise<never>(() => {}); // serve until signal — the finally-close must not run
   } else if (command === "wechat-login") {
     // iLink Bot Protocol QR login (v0.8 M8-4): the human scans with their WeChat app.
+    if (args.web) {
+      // v1.3: the QR's server-side lifetime beats any "terminal → phone" round trip on a
+      // remote box — a localhost page where the human clicks and scans instantly wins.
+      const { wechatLoginWeb } = await import("./wechat-login-web.js");
+      const port = Number(process.env.WECHAT_LOGIN_PORT ?? 8899);
+      const { done } = await wechatLoginWeb({ engine, port });
+      console.log(`[wechat] login page on http://127.0.0.1:${port} — open it (ssh -L ${port}:127.0.0.1:${port} …), click, scan, confirm`);
+      const { binder } = await done;
+      console.log("[wechat] logged in — credentials stored; the watch daemon (same --db) arms the source automatically");
+      if (binder) console.log(`[wechat] scanner identity captured (${binder}) — consider adding it to allowedList so their DMs are explicit`);
+      engine.close();
+      process.exit(0);
+    }
     const { wechatLogin, EngineWechatStore } = await import("./wechat.js");
     const store = new EngineWechatStore(engine);
     let binder: string | null = null;

@@ -183,3 +183,32 @@ describe("panel HTTP API", () => {
     expect(again.doctor.checks.length).toBe(s.doctor.checks.length);
   });
 });
+
+describe("panel loopback hardening (cross-origin POST)", () => {
+  const json = { "content-type": "application/json" };
+
+  it("a browser-origin POST from any other page is refused (loopback is not a CSRF exemption)", async () => {
+    engine.ingest([item("github:issue:91")]);
+    const evil = await fetch(`${base}/api/mode`, { method: "POST", headers: { ...json, origin: "https://evil.example" }, body: JSON.stringify({ mode: "auto" }) });
+    expect(evil.status).toBe(403);
+    expect(engine.policy()?.acceptMode).toBe("observe"); // unchanged
+    const evilStop = await fetch(`${base}/api/stop`, { method: "POST", headers: { ...json, origin: "https://evil.example" }, body: JSON.stringify({ id: 1 }) });
+    expect(evilStop.status).toBe(403);
+    expect(engine.tickets()[0].state).toBe("open");
+  });
+
+  it("a no-cors style text/plain POST is refused — simple requests cannot carry the JSON content type", async () => {
+    const r = await fetch(`${base}/api/mode`, { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ mode: "auto" }) });
+    expect(r.status).toBe(415);
+    expect(engine.policy()?.acceptMode).toBe("observe");
+  });
+
+  it("same-origin (no Origin header) JSON posts keep working — and promote is actually routed now", async () => {
+    engine.ingest([item("github:issue:92")]);
+    // make ticket 1 a speculative rehearsal awaiting promote
+    engine.db.prepare("UPDATE ticket SET speculative = 1, state = 'ended' WHERE id = 1").run();
+    const r = await fetch(`${base}/api/promote`, { method: "POST", headers: json, body: JSON.stringify({ id: 1 }) });
+    expect(r.status).toBe(200); // used to fall through to 404 — the outer POST route never listed /api/promote
+    expect(await r.json()).toMatchObject({ promoted: true });
+  });
+});

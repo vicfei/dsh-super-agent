@@ -334,3 +334,28 @@ describe("typing heartbeat (v1.2.1)", () => {
     expect(next.positions.typingAt).toBeGreaterThan(0); // throttled despite failure
   });
 });
+
+describe("typing heartbeat on the cold path (fix, 2026-11-06)", () => {
+  it("fires even when the long poll hangs and is aborted — a cold session is exactly when it matters", async () => {
+    const store = new MemoryWechatStore();
+    store.saveAuth({ token: "t0", baseUrl: "https://ilink.test" });
+    store.kvSet("wechat_binder", "ilink-1");
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const u = url.toString();
+      calls.push(u);
+      if (u.includes("getconfig")) return new Response(JSON.stringify({ ret: 0, typing_ticket: "tk1" }), { headers: { "content-type": "application/json" } });
+      if (u.includes("sendtyping")) return new Response(JSON.stringify({ ret: 0 }), { headers: { "content-type": "application/json" } });
+      return new Promise<Response>((_, reject) => {
+        // the poll never answers — server holds it — but a real fetch still honors the abort signal
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    }) as unknown as typeof fetch;
+    const src = new WechatSource({ store, fetchImpl, pollTimeoutMs: 120, typingEveryMs: 60_000 });
+    const { triggers, next } = await src.collect({ positions: {} }, {});
+    expect(triggers).toHaveLength(0); // aborted poll, lossless
+    expect(calls.some((u) => u.includes("getconfig"))).toBe(true);
+    expect(calls.filter((u) => u.includes("sendtyping"))).toHaveLength(2);
+    expect(next.positions.typingAt).toBeGreaterThan(0); // throttle persists via the aborted branch
+  });
+});

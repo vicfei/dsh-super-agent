@@ -317,13 +317,39 @@ export class WechatSource implements Source {
       return { triggers: [], next: from };
     }
     const client = new WechatApiClient({ token: auth.token, baseUrl: auth.baseUrl, ...(this.opts.apiBase ? { apiBase: this.opts.apiBase } : {}), ...(this.opts.fetchImpl ? { fetchImpl: this.opts.fetchImpl } : {}) });
+    const next: SourceState = { positions: { ...from.positions } };
+    // Typing heartbeat (v1.2.1): the send-side session ages out when the peer has been
+    // quiet for hours — proactive sends then fail with ret=-2 until fresh inbound traffic
+    // (live finding 2026-11-06: the 08:00 digest could not land at 08:00). A silent typing
+    // touch every interval keeps the session warm. It runs BEFORE the long poll on purpose:
+    // a cold session is exactly when the poll hangs and gets aborted, so the heartbeat must
+    // not depend on the poll's outcome. Every attempt (success OR failure) moves the
+    // throttle — a failing heartbeat must never become its own storm.
+    const lastTyping = Number(from.positions["typingAt"] ?? 0);
+    const typingEvery = this.opts.typingEveryMs ?? 45 * 60_000;
+    if (typingEvery > 0 && Date.now() - lastTyping > typingEvery) {
+      next.positions["typingAt"] = Date.now();
+      const binder = this.opts.store.kvGet?.("wechat_binder") ?? null;
+      if (binder) {
+        try {
+          const cfg = await client.getConfig(binder);
+          if (cfg.ret === 0 && cfg.typing_ticket) {
+            await client.sendTyping(binder, cfg.typing_ticket, 1);
+            await new Promise((r) => setTimeout(r, 300));
+            await client.sendTyping(binder, cfg.typing_ticket, 2);
+          }
+        } catch {
+          /* heartbeat is best-effort — never breaks polling */
+        }
+      }
+    }
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), this.opts.pollTimeoutMs ?? 8000);
     let resp: GetUpdatesResp;
     try {
       resp = await client.getUpdates(this.opts.store.loadCursor(), abort.signal);
     } catch (e) {
-      if (abort.signal.aborted) return { triggers: [], next: from }; // long-poll cut short by our own timeout — lossless, the cursor hasn't moved
+      if (abort.signal.aborted) return { triggers: [], next }; // long-poll cut short by our own timeout — lossless, the cursor hasn't moved
       throw e;
     } finally {
       clearTimeout(timer);
@@ -345,30 +371,6 @@ export class WechatSource implements Source {
         }
         const t = wechatTriggerFromMessage(m);
         if (t && !opts.exclude?.has(t.id)) triggers.push(t);
-      }
-      const next: SourceState = { positions: { ...from.positions } };
-      // Typing heartbeat (v1.2.1): the send-side session ages out when the peer has been
-      // quiet for hours — proactive sends then fail with ret=-2 until fresh inbound traffic
-      // (live finding 2026-11-06: the 08:00 digest could not land at 08:00). A silent typing
-      // touch every interval keeps the session warm; every attempt (success OR failure)
-      // moves the throttle — a failing heartbeat must never become its own storm.
-      const lastTyping = Number(from.positions["typingAt"] ?? 0);
-      const typingEvery = this.opts.typingEveryMs ?? 45 * 60_000;
-      if (typingEvery > 0 && Date.now() - lastTyping > typingEvery) {
-        next.positions["typingAt"] = Date.now();
-        const binder = this.opts.store.kvGet?.("wechat_binder") ?? null;
-        if (binder) {
-          try {
-            const cfg = await client.getConfig(binder);
-            if (cfg.ret === 0 && cfg.typing_ticket) {
-              await client.sendTyping(binder, cfg.typing_ticket, 1);
-              await new Promise((r) => setTimeout(r, 300));
-              await client.sendTyping(binder, cfg.typing_ticket, 2);
-            }
-          } catch {
-            /* heartbeat is best-effort — never breaks polling */
-          }
-        }
       }
       return { triggers, next };
     }

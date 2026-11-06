@@ -120,12 +120,23 @@ export async function runApprovalSweep(
 ): Promise<number> {
   if (!approvalEnabled(policy)) return 0;
   let rendered = 0;
+/**
+ * Render-once guard: a ticket gets its approval ask enqueued exactly one time (the outbox
+ * owns retries). Checking the approval_request row instead caused a render storm — with
+ * several eligible tickets, each openApprovalRequest() supersedes the previous one's row
+ * (newest-wins is per-thread by design), so the next sweep re-rendered the others, which
+ * superseded again, forever (live finding 2026-11-06: 4 tickets × every 15s cycle).
+ */
+const renderedOnce = (ticketId: number): boolean =>
+  Boolean(engine.db.prepare("SELECT 1 FROM effect WHERE kind = 'reply' AND key = ?").get(`approval-req:${ticketId}`));
+
+
   const route = (opener: string): string | null =>
     engine.opsRoutes()[opener.toLowerCase()] ?? engine.firstOpsThread();
 
   for (const t of engine.tickets()) {
     if (t.stage !== "needs-person") continue;
-    if (engine.db.prepare("SELECT 1 FROM approval_request WHERE ticket_id = ? AND resolved_at IS NULL").get(t.id)) continue;
+    if (renderedOnce(t.id)) continue;
     const thread = route(t.opener);
     if (!thread) continue;
     engine.openApprovalRequest(thread, t.id, "needs-person");
@@ -138,7 +149,7 @@ export async function runApprovalSweep(
   for (const t of engine.tickets()) {
     if (!(t.speculative && t.state === "ended")) continue;
     if (engine.db.prepare("SELECT 1 FROM delivery WHERE ticket_id = ?").get(t.id)) continue;
-    if (engine.db.prepare("SELECT 1 FROM approval_request WHERE ticket_id = ? AND resolved_at IS NULL").get(t.id)) continue;
+    if (renderedOnce(t.id)) continue;
     const thread = route(t.opener);
     if (!thread) continue;
     engine.openApprovalRequest(thread, t.id, "speculative");

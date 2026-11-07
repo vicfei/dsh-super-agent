@@ -118,6 +118,26 @@ merge conditions are checkable facts, not model judgment.
       the first, silently); empty-worktree promotes settle once instead of re-logging every
       cycle (#86)
 
+## Milestone 13 — the trust-evidence release (done, v1.3.0)
+
+- [x] Local web UI slices 1–3 (#89/#90/#103, design #89): the panel grows into a dashboard —
+      routines with next fire, watchdog vitals, the doctor embedded (offline, cached, honest
+      absence), and the audit depth: every decision opens to its full trigger, every ticket to
+      its run history and approval state-machine trail. Reads only, localhost only, zero deps.
+- [x] The ops DM answers back (#100): `?` returns the status card — pending decisions, stages,
+      backlog, the clock; fullwidth ？ for Chinese keyboards. With the digits, the IM thread is
+      a complete cockpit.
+- [x] `dsh stats` (#101/#102): gate decisions by kind/source, ticket lifecycle, median cycle
+      time, approval turnaround, routine fires — every figure a query (`--since` windows it).
+- [x] `dsh wechat-login --web` (#96): click → scan → done; the QR's short life beats any
+      terminal round trip on a remote box.
+- [x] Typing heartbeat (#94/#95): a silent typing touch every 45min keeps the iLink send-side
+      session warm (the 08:00 digest could not land at 08:00 without it); throttled through the
+      Source's own positions, cold-path proofed.
+- [x] Hardening from 72h of live dogfood: WeChat client_id dedup (#85), reasoning-model
+      assessment budget (#91), the approval render storm / render-once (#92), panel CSRF
+      guards + the promote route fix (#97), stop-is-final (#98), the catch-up slot cap (#99).
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)

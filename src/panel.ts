@@ -48,6 +48,19 @@ export interface PanelState {
   doctor: DoctorReport | null;
 }
 
+/** The full, untruncated trigger behind a decision row — the audit depth (v1.3 slice 3). */
+function dbTriggerOf(engine: Engine, id: string) {
+  const t = engine.db.prepare("SELECT * FROM trigger WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  if (!t) return null;
+  const d = engine.db.prepare("SELECT kind, strength, basis, would_accept, ts FROM decision WHERE trigger_id = ? ORDER BY id DESC LIMIT 1").get(id) as Record<string, unknown> | undefined;
+  return {
+    id: String(t.id), source: String(t.source), scope: String(t.scope), threadId: String(t.thread_id),
+    author: String(t.author_login), isBot: t.author_is_bot === 1, addressing: t.addressing === 1,
+    body: String(t.body), ts: String(t.ts),
+    ...(d ? { decision: { kind: String(d.kind), strength: d.strength ?? null, basis: String(d.basis), wouldAccept: d.would_accept === 1, ts: String(d.ts) } } : {}),
+  };
+}
+
 export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doctorCtx?: PanelDoctorContext): Promise<Server> {
   let doctorCache: { at: number; report: DoctorReport } | null = null;
   const doctorNow = async (): Promise<DoctorReport | null> => {
@@ -108,6 +121,50 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       };
       send(200, "application/json", JSON.stringify(state));
       return;
+    }
+    // v1.3 slice 3 — the audit depth: every decision opens to its full trigger, every
+    // ticket to its run history, the approval surface to its state machine. Reads only.
+    if (req.method === "GET" && url.pathname === "/api/audit/trigger") {
+      const id = url.searchParams.get("id");
+      if (!id) return send(400, "application/json", JSON.stringify({ error: "id required" }));
+      const row = dbTriggerOf(engine, id);
+      if (!row) return send(404, "application/json", JSON.stringify({ error: "unknown trigger" }));
+      return send(200, "application/json", JSON.stringify(row));
+    }
+    if (req.method === "GET" && url.pathname === "/api/audit/ticket") {
+      const id = Number(url.searchParams.get("id"));
+      if (!Number.isInteger(id)) return send(400, "application/json", JSON.stringify({ error: "id required" }));
+      const ticket = engine.tickets().find((t) => t.id === id);
+      if (!ticket) return send(404, "application/json", JSON.stringify({ error: "unknown ticket" }));
+      const assignments = (engine.db.prepare(
+        "SELECT id, state, exit_code, timed_out, substr(COALESCE(output, ''), -400) AS tail, started_at, ended_at FROM assignment WHERE ticket_id = ? ORDER BY id",
+      ).all(id) as Record<string, unknown>[]).map((a) => ({
+        id: Number(a.id), state: String(a.state), exitCode: a.exit_code === null ? null : Number(a.exit_code),
+        timedOut: a.timed_out === 1, tail: String(a.tail ?? ""), startedAt: String(a.started_at), endedAt: a.ended_at === null ? null : String(a.ended_at),
+      }));
+      const followups = (engine.db.prepare(
+        "SELECT f.ts, tr.body, tr.author_login FROM ticket_followup f JOIN trigger tr ON tr.id = f.trigger_id WHERE f.ticket_id = ? ORDER BY f.id",
+      ).all(id) as Record<string, unknown>[]).map((f) => ({ ts: String(f.ts), body: String(f.body), author: String(f.author_login) }));
+      const requests = (engine.db.prepare(
+        "SELECT id, kind, created_at, confirm_at, resolved_at, superseded_by FROM approval_request WHERE ticket_id = ? ORDER BY id",
+      ).all(id) as Record<string, unknown>[]).map((r) => ({
+        id: Number(r.id), kind: String(r.kind), createdAt: String(r.created_at),
+        confirmAt: r.confirm_at === null ? null : String(r.confirm_at),
+        resolvedAt: r.resolved_at === null ? null : String(r.resolved_at),
+        supersededBy: r.superseded_by === null ? null : Number(r.superseded_by),
+      }));
+      return send(200, "application/json", JSON.stringify({ ticket, assignments, followups, requests }));
+    }
+    if (req.method === "GET" && url.pathname === "/api/audit/approvals") {
+      const rows = engine.db.prepare(
+        "SELECT a.id, a.ops_thread, a.ticket_id, a.kind, a.created_at, a.confirm_at, a.resolved_at, a.superseded_by FROM approval_request a ORDER BY a.id DESC LIMIT 100",
+      ).all() as Record<string, unknown>[];
+      return send(200, "application/json", JSON.stringify(rows.map((r) => ({
+        id: Number(r.id), opsThread: String(r.ops_thread), ticketId: Number(r.ticket_id), kind: String(r.kind),
+        createdAt: String(r.created_at), confirmAt: r.confirm_at === null ? null : String(r.confirm_at),
+        resolvedAt: r.resolved_at === null ? null : String(r.resolved_at),
+        supersededBy: r.superseded_by === null ? null : Number(r.superseded_by),
+      }))));
     }
     if (req.method === "POST" && (url.pathname === "/api/mode" || url.pathname === "/api/stop" || url.pathname === "/api/promote")) {
       // Loopback is not a CSRF exemption: a malicious page in ANY browser tab can fire a

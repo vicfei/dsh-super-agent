@@ -31,6 +31,10 @@
   th { color: #8b949e; font-weight: normal; }
   .ex { color: #8b949e; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dcheck { padding: 2px 0; }
+  tr.dec { cursor: pointer; }
+  tr.audit { background: #161b22; }
+  tr.audit td { border-bottom: 1px solid #30363d; white-space: pre-wrap; font-size: 12px; color: #8b949e; }
+  .card.click { cursor: pointer; }
   .ic { display: inline-block; width: 16px; text-align: center; margin-right: 6px; font-weight: bold; }
   .ic.ok { color: #3fb950; } .ic.warn { color: #e3b341; } .ic.fail { color: #f85149; } .ic.info { color: #8b949e; }
   footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
@@ -104,18 +108,18 @@ async function render() {
     s.policy && s.policy.acceptMode === 'auto' ? '' : ' — inferred candidates do not run in this mode';
 
   const spec = s.tickets.filter(t => t.speculative);
-  const specCards = spec.map(t => `<div class="card"><span class="badge b-shadow">speculative</span>
+  const specCards = spec.map(t => `<div class="card click" onclick="auditTicket(this, ${t.id})"><span class="badge b-shadow">speculative</span>
           ticket #${t.id} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)} — rehearsed silently
-          <button class="stop" style="color:#3fb950;border-color:#3fb95066" onclick="promoteTicket(${t.id})">promote</button></div>`).join('');
+          <button class="stop" style="color:#3fb950;border-color:#3fb95066" onclick="event.stopPropagation(); promoteTicket(${t.id})">promote</button> · click for run history</div>`).join('');
   const personTickets = s.tickets.filter(t => t.stage === 'needs-person');
   const revoked = s.tickets.filter(t => t.revokedReason);
   document.getElementById('awaiting').innerHTML =
     (personTickets.length === 0 && revoked.length === 0 && spec.length === 0)
       ? '<div class="quiet">nothing needs you</div>'
       : specCards
-        + personTickets.map(t => `<div class="card"><span class="badge b-person">needs-person</span>
+        + personTickets.map(t => `<div class="card click" onclick="auditTicket(this, ${t.id})"><span class="badge b-person">needs-person</span>
           ticket #${t.id} ${esc(t.strength)} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)}
-          <button class="stop" onclick="stopTicket(${t.id})">stop</button></div>`).join('')
+          <button class="stop" onclick="event.stopPropagation(); stopTicket(${t.id})">stop</button> · click for run history</div>`).join('')
         + revoked.map(t => `<div class="card"><span class="badge b-ignore">revoked</span>
           ticket #${t.id} — ${esc(t.revokedReason)}</div>`).join('');
 
@@ -184,7 +188,7 @@ async function render() {
 
   document.getElementById('decisions').innerHTML = s.decisions.map(d => {
     const cls = d.kind === 'accept' ? 'b-accept' : d.wouldAccept ? 'b-shadow' : 'b-ignore';
-    return `<tr><td class="quiet">${fmt(d.ts)}</td>
+    return `<tr class="dec" onclick="auditTrigger(this, '${esc(d.id)}')"><td class="quiet">${fmt(d.ts)}</td>
       <td><span class="badge ${cls}">${d.kind}${d.wouldAccept ? ' (would)' : ''}</span></td>
       <td>${esc(d.strength || '—')}</td><td>${esc(d.author)}${d.isBot ? ' 🤖' : ''}</td>
       <td class="quiet">${esc(threadShort(d.threadId))}</td>
@@ -199,6 +203,34 @@ async function render() {
       + `<div class="quiet">${doc.failures > 0 ? doc.failures + ' failure' + (doc.failures === 1 ? '' : 's') + ', ' : ''}${doc.warnings > 0 ? doc.warnings + ' warning' + (doc.warnings === 1 ? '' : 's') : ''}${doc.failures === 0 && doc.warnings === 0 ? 'all clean' : ''} · exit ${doc.exitCode} · offline facts, cached 60s</div>`;
 }
 
+async function auditTrigger(row, id) {
+  const open = row.nextElementSibling;
+  if (open && open.classList.contains('audit')) { open.remove(); return; }
+  const a = await (await fetch('/api/audit/trigger?id=' + encodeURIComponent(id))).json();
+  if (a.error) return;
+  const detail = a.decision ? `decision: ${a.decision.kind} (${a.decision.basis})` : 'no decision recorded';
+  const tr = document.createElement('tr');
+  tr.className = 'audit';
+  tr.innerHTML = `<td colspan="6">full trigger ${esc(a.source)} · ${esc(a.author)} → ${esc(a.threadId)} · ${esc(a.ts)}
+${esc(detail)}
+
+${esc(a.body)}</td>`;
+  row.after(tr);
+}
+async function auditTicket(row, id) {
+  const open = row.nextElementSibling;
+  if (open && open.classList.contains('audit')) { open.remove(); return; }
+  const a = await (await fetch('/api/audit/ticket?id=' + id)).json();
+  if (a.error) return;
+  const runs = a.assignments.map(x => `run #${x.id}: ${x.state} exit=${x.exitCode ?? '—'}${x.timedOut ? ' (timeout)' : ''} ${x.endedAt ? 'at ' + fmt(x.endedAt) : ''}${x.tail ? '\n  tail: ' + esc(x.tail.slice(-160)) : ''}`).join('\n') || 'never ran';
+  const fu = a.followups.map(f => `@${f.author}: ${f.body.slice(0, 80)}`).join('\n') || '';
+  const reqs = a.requests.map(r => `#${r.id} ${r.kind} ${r.confirmAt ? '· double-keyed ' : ''}${r.resolvedAt ? '· resolved ' + fmt(r.resolvedAt) : '· OPEN'}${r.supersededBy ? ' · superseded by #' + r.supersededBy : ''}`).join('\n') || '';
+  const div = document.createElement('div');
+  div.className = 'card audit';
+  div.style.whiteSpace = 'pre-wrap';
+  div.textContent = runs + (fu ? '\nfollow-ups:\n' + fu : '') + (reqs ? '\napproval trail:\n' + reqs : '');
+  row.after(div);
+}
 async function setMode(mode) {
   if (mode === 'auto' && !confirm('auto accepts inferred work after assessment, without further review.\n\nStart in observe and review records first (docs/002). Switch to auto?')) return;
   if (mode === 'off' && !confirm('off rejects all inferred candidates. Explicit requests still work. Switch?')) return;

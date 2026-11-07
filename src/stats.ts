@@ -122,6 +122,14 @@ export function runStats(engine: Engine, opts: StatsWindow = {}): StatsReport {
   };
 }
 
+/** Sub-minute durations render in seconds; hours render in hours — mock workers are fast. */
+function dur(min: number | null): string {
+  if (min === null) return "—";
+  if (min < 1) return `${Math.max(1, Math.round(min * 60))}s`;
+  if (min >= 90) return `${(min / 60).toFixed(1)}h`;
+  return `${Math.round(min)}m`;
+}
+
 /** One line per section — the digest/panel rendering. */
 export function formatStats(r: StatsReport): string {
   const src = Object.entries(r.gate.bySource).map(([k, v]) => `${k}:${v}`).join(" ") || "—";
@@ -130,7 +138,7 @@ export function formatStats(r: StatsReport): string {
     `window: ${r.window.since ? r.window.since.slice(0, 16).replace("T", " ") : "all time"} → ${r.window.until.slice(0, 16).replace("T", " ")}`,
     `gate: ${r.gate.decisions} decisions (${src}) — ${r.gate.accepted} accepted · ${r.gate.wouldAccept} would-accept · ${r.gate.rejected} gated out`,
     `tickets: ${r.tickets.opened} opened · ${r.tickets.resumed} resumed · ${r.tickets.joined} follow-ups joined · ${r.tickets.needsPerson} awaiting a person`,
-    `cycle: median ${r.medianCycleMin ?? "—"} min ticket→done · approval turnaround ${r.approvalTurnaroundMin ?? "—"} min`,
+    `cycle: median ${dur(r.medianCycleMin)} ticket→done · approval turnaround ${dur(r.approvalTurnaroundMin)}`,
     `clock: ${clock}`,
   ].join("\n");
 }

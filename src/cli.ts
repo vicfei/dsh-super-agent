@@ -82,7 +82,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "routines", "init", "doctor", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "stats", "routines", "init", "doctor", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -535,6 +535,11 @@ try {
     } else {
       die(`unknown routines subcommand: ${sub} (list | validate | fire)${WITH_HELP}`);
     }
+  } else if (command === "stats") {
+    // v1.3: the numbers behind the trust story — pure reads, no state.
+    const { runStats, formatStats } = await import("./stats.js");
+    const since = positionals[1] === "--since" ? positionals[2] : positionals[1] && !positionals[1].startsWith("-") ? positionals[1] : undefined;
+    console.log(formatStats(runStats(engine, since ? { sinceIso: new Date(since).toISOString() } : {})));
   } else if (command === "health") {
     // Watchdog's read-only体检 (v0.9-1): no writes, no replies — safe at any time.
     const { healthReport } = await import("./watchdog.js");

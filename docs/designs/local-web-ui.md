@@ -1,6 +1,6 @@
 # Local web UI — the read-only dashboard (v1.3)
 
-> Status: **slices 1–2 implemented**. The competition proved the
+> Status: **slices 1–3 implemented** (slice 3: decision rows open to the full trigger; tickets open to their run history, follow-ups, and the approval state-machine trail). The competition proved the
 > onboarding half of the story (opensuperagent's web form); the operations half — one
 > honest page of what the agent is doing — is ours to define. The design constraint is
 > inherited from the panel (v0.4): **localhost-only, zero runtime dependencies, no
@@ -39,12 +39,13 @@ the watch daemon's env/executor config into the panel and renders the check list
 server-side so the page's 3s polling never spawns subprocess storms; without a host
 context (`dsh watch` / `dsh panel` wiring) the section renders an honest "not wired".
 
-### Slice 3 — audit depth
+### Slice 3 (shipped) — audit depth
 
-Decision rows deep-link to the full trigger body (respecting the inline/spill split),
-approval requests show their state-machine history (requested → confirmed → resolved),
-assignments show output tails. The audit trail exists in the engine; this makes it
-navigable.
+Decision rows open to the full, untruncated trigger plus its decision; ticket cards
+open to the run history (every assignment with exit code and output tail), the joined
+follow-ups, and the approval state-machine trail (double-key arming, resolution,
+supersession). This is the evidence chain the Road-to-Auto campaign stands on: no
+auditable past, no delegable future.
 
 ## Tests
 

@@ -191,7 +191,7 @@ A person's **stop is final**: a stopped ticket is never resurrected by later mes
 
 **Watchdog (v0.9).** The article's §6 outside control loop, with one hard rule: it **observes and nudges — it never touches admission**; "should this continue" stays with the human approval surface. Opt-in via `policy.watchdog`: an assignment running past `stuckWorkingNudgeMs` (default 30 min) gets exactly one check-in reply in its thread — before nudging, an optional LLM consult (any OpenAI-compatible endpoint, fail-closed to the rule) can skip it when the worker's output tail shows substantive progress; a needs-person ticket waiting past `needsPersonReminderMs` (default 24 h) gets exactly one reminder — never an auto-close. The executor's group-kill timeout remains the hard stop; the Watchdog never kills runs. `health` is its read-only CLI: stage counts, oldest stuck ages, effect backlog.
 
-And the panel (`npm run panel`, localhost — the v1.3 dashboard) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, the accept-mode switch (switching to `auto` asks you to confirm), routines with their next fire, the watchdog vitals, and the doctor's checks rendered green/yellow/red:
+And the panel (`npm run panel`, localhost — the v1.3 dashboard) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, the accept-mode switch (switching to `auto` asks you to confirm), routines with their next fire, the watchdog vitals, the doctor's checks rendered green/yellow/red, and the audit depth — every decision opens to its full trigger, every ticket to its run history and approval trail:
 
 ## Comparison
 

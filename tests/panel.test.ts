@@ -212,3 +212,42 @@ describe("panel loopback hardening (cross-origin POST)", () => {
     expect(await r.json()).toMatchObject({ promoted: true });
   });
 });
+
+describe("v1.3 slice 3: audit depth", () => {
+  it("a decision opens to its FULL trigger (no 160-char excerpt) plus the decision itself", async () => {
+    const long = "x".repeat(300);
+    engine.ingest([item("github:issue:71", { body: long })]);
+    const a = (await (await fetch(`${base}/api/audit/trigger?id=github:issue:71`)).json()) as {
+      body: string; decision: { kind: string; basis: string }; author: string;
+    };
+    expect(a.body).toHaveLength(300); // untruncated
+    expect(a.decision.kind).toBe("accept");
+    expect(a.decision.basis).toContain("allowed alice");
+    expect((await (await fetch(`${base}/api/audit/trigger?id=nope`)).json())).toMatchObject({ error: "unknown trigger" });
+  });
+
+  it("a ticket opens to its run history, follow-ups, and the approval state machine", async () => {
+    engine.ingest([item("github:issue:72")]);
+    const aid = engine.startAssignment(1, "");
+    engine.endAssignment(aid, 3, false, "line1\nFAILTEST seen — exiting 3");
+    engine.ingest([item("github:issue_comment:72", { scope: "issue_comment" as const, body: "the follow-up context" })]); // joins
+    engine.openApprovalRequest("github:o/r/issues/5", 1, "needs-person");
+    engine.armDestructiveConfirm(1);
+    engine.resolveApproval(1);
+    const a = (await (await fetch(`${base}/api/audit/ticket?id=1`)).json()) as {
+      ticket: { id: number }; assignments: { exitCode: number; tail: string }[];
+      followups: { body: string }[]; requests: { confirmAt: string | null; resolvedAt: string | null }[];
+    };
+    expect(a.ticket.id).toBe(1);
+    expect(a.assignments[0].exitCode).toBe(3);
+    expect(a.assignments[0].tail).toContain("FAILTEST");
+    expect(a.followups[0].body).toContain("follow-up context");
+    expect(a.requests[0].confirmAt).not.toBeNull(); // the double-key is part of the trail
+    expect(a.requests[0].resolvedAt).not.toBeNull();
+  });
+
+  it("the approval surface history lists the state machine across tickets", async () => {
+    const rows = (await (await fetch(`${base}/api/audit/approvals`)).json()) as unknown[];
+    expect(Array.isArray(rows)).toBe(true);
+  });
+});

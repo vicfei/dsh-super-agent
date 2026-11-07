@@ -392,7 +392,11 @@ export class Engine {
             .prepare("SELECT * FROM ticket WHERE thread_id = ? AND opener_login = ? AND state = 'ended' ORDER BY id DESC LIMIT 1")
             .get(t.threadId, t.author.login) as Record<string, unknown> | undefined;
 
-          if (ended && ended.revoked_reason === null) {
+          // A ticket a PERSON stopped (stopped_by set) takes no resumes: the stop withdrew
+          // the mandate on purpose (panel stop, IM double-key) — an emoji or a "hi" must not
+          // resurrect a whole failed context (live findings 11-06/07: three accidental
+          // resumes of a FAILTEST ticket). New work on the thread opens a new ticket.
+          if (ended && ended.revoked_reason === null && ended.stopped_by === null) {
             const failReason = this.revalidateFailReason(ended, policy, t.author.login);
             if (failReason) {
               this.db.prepare("UPDATE ticket SET revoked_reason = ?, updated_at = ? WHERE id = ?").run(failReason, now, ended.id);

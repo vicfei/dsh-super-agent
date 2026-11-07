@@ -94,19 +94,28 @@ describe("ingest", () => {
 });
 
 describe("stop / resume / revalidation", () => {
-  it("person's stop ends the ticket; the opener's later message resumes it", () => {
+  it("person's stop ends the ticket FOR GOOD; the opener's later message opens fresh work (stop ≠ complete)", () => {
     engine.ingest([item()]);
     expect(engine.stopTicket(1, "panel")).toBe(true);
     expect(engine.stopTicket(1, "panel")).toBe(false); // not open anymore
     expect(engine.tickets()[0]).toMatchObject({ state: "ended", stoppedBy: "panel" });
 
     const r = engine.ingest([item({ id: "github:issue_comment:10", scope: "issue_comment", body: "resume please" })]);
+    expect(r.resumed).toBe(0); // a stopped mandate is withdrawn — an emoji must not resurrect it
+    expect(r.ticketsOpened).toBe(1); // new work, fresh context
+    const t = engine.tickets()[0];
+    expect(t.id).toBe(2);
+  });
+
+  it("a NATURALLY completed ticket resumes: the follow-up keeps one thread and its context", () => {
+    engine.ingest([item()]);
+    engine.completeTicket(1); // the worker finished — the mandate stands
+    const r = engine.ingest([item({ id: "github:issue_comment:11", scope: "issue_comment", body: "also handle X" })]);
     expect(r.resumed).toBe(1);
     const t = engine.tickets()[0];
     expect(t.state).toBe("open");
     expect(t.resumedCount).toBe(1);
-    const fx = engine.takeDue();
-    expect(fx.some((f) => f.key === "ticket-resume:1:1")).toBe(true);
+    expect(t.followUps).toBe(1); // the resuming message rides along as context
   });
 
   it("a different person's message does not resume another's ticket (it opens their own)", () => {
@@ -122,7 +131,7 @@ describe("stop / resume / revalidation", () => {
 
   it("weakening policy keeps open tickets; resume revalidates and revokes on failure", () => {
     engine.ingest([item()]); // explicit ticket for alice (basis: allowed alice addressing agent)
-    engine.stopTicket(1, "panel");
+    engine.completeTicket(1); // natural end — the mandate still stands for revalidation
     // alice stays admissible via the unlisted-addressing cell, but is off the allowed list:
     engine.setPolicyIfChanged({
       ...policy, version: 2, allowedList: ["bob"],
@@ -148,7 +157,7 @@ describe("stop / resume / revalidation", () => {
     const inf = item({ addressing: false, id: "github:issue:21" });
     engine.ingest([inf]); // auto mode → inferred accept
     expect(engine.tickets()[0].strength).toBe("inferred");
-    engine.stopTicket(1, "panel");
+    engine.completeTicket(1); // natural end — an inferred mandate still faces revalidation
     engine.setPolicyIfChanged({ ...policy, version: 3, acceptMode: "observe" });
 
     // alice addresses the agent → explicit → admitted in every mode → resume attempt happens
@@ -184,7 +193,7 @@ describe("subscription bypass (v0.7-1)", () => {
 
   it("resume carries the resuming message to the worker (the old gap: original body only)", () => {
     engine.ingest([item({ body: "original request" })]);
-    engine.stopTicket(1, "panel");
+    engine.completeTicket(1); // natural end → a follow-up resumes with full context
     engine.ingest([item({ id: "github:issue_comment:52", scope: "issue_comment", body: "the resume instructions" })]);
     expect(engine.tickets()[0].resumedCount).toBe(1);
     const claimed = engine.claimQueued(5);
@@ -264,5 +273,27 @@ describe("effects (outbox)", () => {
     engine.failEffect(fx.id, "bad request", false);
     const row = engine.db.prepare("SELECT status FROM effect WHERE id = ?").get(fx.id) as { status: string };
     expect(row.status).toBe("failed");
+  });
+});
+
+describe("stop is final (a person's stop withdraws the mandate for good)", () => {
+  it("a message on a thread whose ticket was STOPPED opens NEW work, never resumes the corpse", () => {
+    // setup via the real path: open → fail → person stops
+    const t1 = item({ id: "github:issue:1" });
+    engine.ingest([t1]);
+    engine.db.prepare("UPDATE ticket SET stopped_by = 'im-approval', state = 'ended' WHERE id = 1").run();
+    const r = engine.ingest([item({ id: "github:issue:2", body: "[smile]" })]);
+    expect(r.resumed).toBe(0);
+    expect(r.ticketsOpened).toBe(1); // fresh ticket, fresh context — no FAILTEST baggage
+    expect(engine.tickets().map((x) => x.id)).toEqual([2, 1]);
+  });
+
+  it("a NATURALLY completed ticket (stopped_by null) still resumes — follow-up work keeps one thread", () => {
+    engine.ingest([item({ id: "github:issue:3" })]);
+    engine.completeTicket(1);
+    const r = engine.ingest([item({ id: "github:issue:4", body: "also handle X" })]);
+    expect(r.resumed).toBe(1);
+    expect(engine.tickets()).toHaveLength(1);
+    expect(engine.tickets()[0].followUps).toBe(1);
   });
 });

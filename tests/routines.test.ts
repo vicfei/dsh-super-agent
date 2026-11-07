@@ -192,14 +192,6 @@ describe("nextRoutineFire", () => {
     expect(nextRoutineFire(every10, last, now)).toBe(now - 30 * MIN);
   });
 
-  it("catch-up horizon: slots older than 7 days are dropped, not replayed", () => {
-    const daily = def(); // 08:00 UTC daily
-    const last = now - 10 * DAY; // ten days without a run
-    const fire = nextRoutineFire(daily, last, now);
-    expect(fire).toBeGreaterThan(now - ROUTINE_CATCHUP_HORIZON_MS - DAY); // within the horizon…
-    expect(fire).toBeLessThanOrEqual(now); // …but still a catch-up (due now)
-  });
-
   it("first enable (no kv state) starts at NOW — no 56 years of backlog", () => {
     expect(nextRoutineFire(def(), undefined, now)).toBe(utc("2026-11-06T08:00:00Z"));
   });
@@ -387,5 +379,23 @@ describe("routineTrigger", () => {
   it("manual fires get their own id space (repeatable tool, not a schedule slot)", () => {
     const t = routineTrigger(def(), utc("2026-11-05T08:00:00Z"));
     expect(t.id).toBe(`routine:digest:${new Date(utc("2026-11-05T08:00:00Z")).toISOString()}`);
+  });
+});
+
+describe("catch-up slot cap (live finding 2026-11-07: daily→hourly switch armed ~168 stale slots)", () => {
+  it("hourly: at most 24 missed slots replay — older ones are skipped to the recent window", () => {
+    const everyHour = def({ schedule: { cron: "14 * * * *", tz: "UTC" } });
+    const now = Date.parse("2026-11-07T06:00:00Z");
+    const threeDaysStale = now - 72 * 3600_000; // 72 missed hourly slots
+    const fire = nextRoutineFire(everyHour, threeDaysStale, now);
+    expect(fire).toBeGreaterThanOrEqual(now - 24 * 3600_000); // inside the 24-slot window…
+    expect(fire).toBeLessThanOrEqual(now); // …but still a catch-up (due now)
+  });
+
+  it("daily: the cap stays at the 7-day horizon (24 estimated slots ≈ 24 days > 7d)", () => {
+    const daily = def(); // 0 8 * * * UTC — one slot a day
+    const now = Date.parse("2026-11-07T12:00:00Z");
+    const threeDaysStale = Date.parse("2026-11-04T08:00:00Z"); // 3 missed daily slots
+    expect(nextRoutineFire(daily, threeDaysStale, now)).toBe(Date.parse("2026-11-05T08:00:00Z")); // first missed — unchanged semantics
   });
 });

@@ -17,7 +17,7 @@ import type { Source, SourceState } from "./source.js";
 export const MAX_ROUTINE_DEFINITIONS = 32;
 export const MAX_FIRES_PER_SWEEP = 32;
 /** Missed slots older than this are dropped, not replayed (see design impl notes). */
-export const ROUTINE_CATCHUP_HORIZON_MS = 7 * 24 * 60 * 60_000;
+export const ROUTINE_CATCHUP_SLOTS = 24;
 /** How far ahead nextWallMatch searches before declaring a schedule unmatchable. */
 const DAY_SEARCH_LIMIT = 366 * 4;
 
@@ -256,12 +256,19 @@ export function routineIntervalMs(schedule: RoutineDefinition["schedule"]): numb
 /**
  * The next slot this routine should honor, given its last honored slot.
  * - last undefined (first enable): start from now — no backlog replay on day one;
- * - last stale: catch up from the oldest missed slot, dropping anything older
- *   than the 7-day horizon (a digest three days late is useful; fifty is spam).
+ * - last stale: catch up from the oldest missed slot, dropping anything beyond the
+ *   slot cap (live finding 2026-11-07: switching a routine from daily to hourly with a
+ *   week-old `last` armed ~168 backlogged slots, and busy cycles drain them at sweep
+ *   speed — a send storm. At most ROUTINE_CATCHUP_SLOTS missed runs replay: daily ≈ 24
+ *   days of horizon, hourly 24h, every-minute 24 minutes).
  */
 export function nextRoutineFire(d: RoutineDefinition, lastMs: number | undefined, nowMs: number): number {
   const now = minuteFloor(nowMs);
-  const from = lastMs === undefined ? now : Math.max(lastMs, now - ROUTINE_CATCHUP_HORIZON_MS);
+  const intervalMs =
+    d.schedule.cron !== undefined
+      ? Math.max(60_000, Math.round(86_400_000 / (parseCron(d.schedule.cron).hours.length * parseCron(d.schedule.cron).minutes.length)))
+      : routineIntervalMs(d.schedule);
+  const from = lastMs === undefined ? now : Math.max(lastMs, now - ROUTINE_CATCHUP_SLOTS * intervalMs);
   if (d.schedule.cron !== undefined) {
     return nextCronMatch(from, parseCron(d.schedule.cron), d.schedule.tz ?? localTz());
   }

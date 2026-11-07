@@ -21,6 +21,7 @@ Commands:
   init      six-step wizard writing ./dsh/policy.json + ./dsh/executor.json (--template minimal|dogfood)
   doctor    read-only checks over policy/executor/env/db — exit 0 clean · 1 warnings · 2 failures
   health    read-only体检: stage counts, oldest stuck ages, effect backlog (watchdog's eyes)
+  stats     the numbers behind the trust story: gate decisions, cycle times, routine fires [--since ISO]
   wechat-login  iLink QR login: scan with WeChat, credentials land in the engine db
                --web serves a localhost page instead (click → scan → done; the QR is short-lived)
   help      show this usage

@@ -8,6 +8,7 @@ import type { Policy, Trigger } from "./domain.js";
 import type { Engine } from "./engine.js";
 import type { ReplyChannel } from "./source.js";
 import { drainReplyEffects } from "./work.js";
+import { lastKey, nextRoutineFire, routineDefinitions, routinesEnabled } from "./routines.js";
 
 const EXPIRY_MS = 60 * 60_000;
 const CONFIRM_MS = 5 * 60_000;
@@ -20,6 +21,12 @@ export function approvalEnabled(policy: Policy): boolean {
 export function isApprovalDigit(body: string): 1 | 2 | 3 | null {
   const t = body.trim();
   return t === "1" || t === "2" || t === "3" ? (Number(t) as 1 | 2 | 3) : null;
+}
+
+/** Strict shape: the whole trimmed body is a question mark (ASCII `?` or fullwidth `？`). */
+export function isStatusQuery(body: string): boolean {
+  const t = body.trim();
+  return t === "?" || t === "？";
 }
 
 /**
@@ -36,13 +43,19 @@ export function interceptApprovalCommands(
   const rest: Trigger[] = [];
   const applied: string[] = [];
   for (const t of triggers) {
-    const digit = isApprovalDigit(t.body);
     const owner = engine.opsThreadLogin(t.threadId);
-    if (digit === null || owner === null || owner.toLowerCase() !== t.author.login.toLowerCase()) {
-      rest.push(t); // not a command: group chatter, wrong thread, wrong sender, or just words
+    const fromOwner = owner !== null && owner.toLowerCase() === t.author.login.toLowerCase();
+    const digit = isApprovalDigit(t.body);
+    if (digit !== null && fromOwner) {
+      applied.push(applyApproval(engine, t.threadId, digit, now));
       continue;
     }
-    applied.push(applyApproval(engine, t.threadId, digit, now));
+    if (isStatusQuery(t.body) && fromOwner) {
+      engine.enqueueReply(`ops-status:${t.id}`, t.threadId, opsStatusCard(engine, policy, now));
+      applied.push(`status-card → ${t.threadId.split(":")[0]} ops thread`);
+      continue;
+    }
+    rest.push(t); // not a command: group chatter, wrong thread, wrong sender, or just words
   }
   return { rest, applied };
 }
@@ -109,6 +122,45 @@ export function applyApproval(engine: Engine, opsThread: string, digit: 1 | 2 | 
     ? `✅ Ticket #${req.ticketId} requeued — the worker will take another run and report here.`
     : `Ticket #${req.ticketId} was not awaiting a person — nothing requeued.`);
   return ok ? `requeue:${req.ticketId}` : `requeue-noop:${req.ticketId}`;
+}
+
+/**
+ * The ops status card (v1.3): `?` in an ops thread answers with the whole picture —
+ * what awaits the owner, ticket stages, outbox backlog, the clock's next fire. Reads only.
+ */
+export function opsStatusCard(engine: Engine, policy: Policy, now: Date = new Date()): string {
+  const pending = engine.pendingApprovals();
+  const need = pending.filter((p) => p.kind === "needs-person").length;
+  const rehearsal = pending.filter((p) => p.kind === "speculative").length;
+  const tickets = engine.tickets();
+  const stages = { queued: 0, working: 0, "needs-person": 0, ended: 0 } as Record<string, number>;
+  for (const t of tickets) stages[t.stage] = (stages[t.stage] ?? 0) + 1;
+  const fx = engine.db.prepare("SELECT status, COUNT(*) c FROM effect GROUP BY status").all() as { status: string; c: number }[];
+  const fxOf = (st: string) => Number(fx.find((r) => r.status === st)?.c ?? 0);
+  const clock = routineCard(engine, policy, now);
+  return [
+    `📊 dsh status — acceptMode ${policy.acceptMode}`,
+    `⏳ awaiting you: ${pending.length}${need ? ` (needs-person ${need}` : ""}${need && rehearsal ? " · " : ""}${rehearsal ? `rehearsal ${rehearsal}` : ""}${need || rehearsal ? ")" : ""}`,
+    `🎫 tickets: queued ${stages.queued} · working ${stages.working} · needs-person ${stages["needs-person"]} · ended ${stages.ended}`,
+    `📤 effects: pending ${fxOf("pending")} · failed ${fxOf("failed")}`,
+    ...(clock ? [clock] : []),
+  ].join("\n");
+}
+
+function routineCard(engine: Engine, policy: Policy, now: Date): string | null {
+  if (!routinesEnabled(policy)) return null;
+  const positions = engine.sourceState("timer").positions;
+  const lines: string[] = [];
+  for (const d of routineDefinitions(policy)) {
+    try {
+      const next = nextRoutineFire(d, positions[lastKey(d.id)], now.getTime());
+      const inMin = Math.max(0, Math.round((next - now.getTime()) / 60_000));
+      lines.push(`⏰ ${d.id}: ${next <= now.getTime() ? "overdue (fires next sweep)" : `next ${new Date(next).toISOString().slice(11, 16)}Z (in ${inMin >= 60 ? Math.round(inMin / 60) + "h" : inMin + "m"})`}`);
+    } catch {
+      lines.push(`⏰ ${d.id}: schedule error`);
+    }
+  }
+  return lines.length ? lines.join("\n") : null;
 }
 
 /** Render requests for pending decisions into ops threads (the watch cycle calls this). */

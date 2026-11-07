@@ -10,6 +10,8 @@ import type { Policy, Trigger } from "../src/domain.js";
 import { Engine, type IngestItem } from "../src/engine.js";
 import { evaluateGate, resolveCandidate } from "../src/gate.js";
 import type { ReplyChannel } from "../src/source.js";
+import { interceptApprovalCommands } from "../src/approval.js";
+import { drainReplyEffects } from "../src/work.js";
 import { applyApproval, interceptApprovalCommands, isApprovalDigit, runApprovalSweep } from "../src/approval.js";
 
 let dir: string;
@@ -181,3 +183,33 @@ async function drain(ch: ReplyChannel): Promise<void> {
   const { drainReplyEffects } = await import("../src/work.js");
   await drainReplyEffects(engine, [ch]);
 }
+
+describe("ops status command: ? in the ops thread (v1.3)", () => {
+  it("the owner's ? gets the whole picture back — pending decisions, stages, backlog, the clock", async () => {
+    await setupNeedsPerson(); // ticket 1 in needs-person
+    engine.openApprovalRequest("wechat:peer/wxid_alice", 1, "needs-person"); // …and asked (as the sweep would)
+    engine.setPolicyIfChanged({
+      ...policy,
+      version: 2,
+      routines: { enabled: true, definitions: [{ id: "digest", prompt: "p", schedule: { cron: "0 8 * * 1-5", tz: "UTC" }, reportTo: "wechat:peer/wxid_alice" }] },
+    });
+    const { rest, applied } = interceptApprovalCommands([imItem(9, "?")], engine, engine.policy()!);
+    expect(rest).toHaveLength(0); // consumed — a weak-intent ? must never become a ticket
+    expect(applied[0]).toContain("status-card");
+    const ch = channel();
+    await drain(ch);
+    const card = ch.sent[0];
+    expect(card).toContain("📊 dsh status — acceptMode observe");
+    expect(card).toContain("awaiting you: 1");
+    expect(card).toContain("needs-person 1");
+    expect(card).toContain("⏰ digest:");
+  });
+
+  it("fullwidth ？ works for Chinese keyboards; strangers' and wordy ?s are just chat", async () => {
+    engine.ingest([accept(imItem(1, "hello"))]); // register the ops thread
+    const a = interceptApprovalCommands([imItem(10, "？")], engine, engine.policy()!);
+    expect(a.applied[0]).toContain("status-card");
+    const b = interceptApprovalCommands([imItem(11, "? now"), imItem(12, "?", "bob", "wechat:peer/wxid_bob")], engine, engine.policy()!);
+    expect(b.rest).toHaveLength(2); // not commands — they flow through the gate like any message
+  });
+});

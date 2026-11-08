@@ -11,8 +11,15 @@ An independent, executor-agnostic implementation of the [DeepSeek Super-agent](h
 [中文文档](README.zh-CN.md)
 
 <p align="center">
-  <img src="docs/banner.png" alt="dsh-super-agent — admission control, observe mode and tickets for any CLI coding agent" width="880">
+  <img src="docs/banner-en.png" alt="dsh-super-agent — admission control, observe mode and tickets for any CLI coding agent" width="880">
 </p>
+
+<p align="center">
+  <a href="docs/promo-en.mp4" title="57-second intro video (with subtitles)">
+    <img src="docs/promo-thumb.png" alt="dsh-super-agent promo — click to play" width="880">
+  </a>
+</p>
+<p align="center"><sub>▶ 57-second intro — admission control, observe mode, one-digit approvals (subtitled)</sub></p>
 
 ---
 

@@ -144,3 +144,30 @@ describe("delivery", () => {
     expect(posted[0].body).toEqual({ body: "recorded." });
   });
 });
+
+// ── fresh-engine first collect (issue #112) ────────────────────────────────
+// A brand-new engine hands `positions: {}` — absent keys are undefined, and
+// Math.max(undefined, x) is NaN, which JSON persists as null. The first collect
+// then returned null high-water marks, and cycle 2 re-listed everything (live
+// finding: a fresh watch on a busy repo flooded tickets from history). The fix
+// seeds each feed's maxSeen with `?? 0`; these tests pin it.
+
+describe("first collect on a fresh engine (#112)", () => {
+  it("returns numeric high-water positions from empty positions — never null/NaN after JSON", async () => {
+    const { source } = makeSource(makeClient({ issues: [prLeak, issue], comments: [comment], pulls: [pull], reviews: [review] }));
+    const { next } = await source.collect({ positions: {} }, { exclude: new Set() });
+    const persisted = JSON.parse(JSON.stringify(next.positions)); // what the engine stores
+    expect(persisted.issue).toBe(20); // the PR leak (id 30) must not count for the issues feed
+    expect(persisted.issue_comment).toBe(300);
+    expect(persisted.pr).toBe(31);
+    expect(persisted.review_comment).toBe(400);
+  });
+
+  it("a later collect from a null position (the pre-fix stored state) still advances", async () => {
+    const { source } = makeSource(makeClient({ issues: [issue], comments: [comment], pulls: [pull], reviews: [review] }));
+    const from = { positions: { issue: null, issue_comment: null, pr: null, review_comment: null } };
+    const { next } = await source.collect(from, { exclude: new Set() });
+    expect(next.positions.issue).toBe(20);
+    expect(next.positions.issue_comment).toBe(300);
+  });
+});

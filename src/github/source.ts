@@ -53,9 +53,11 @@ export class GitHubSource implements Source {
 
     // Each feed compares against its position AT COLLECT START (frozen) and advances once at the
     // end — comparing against a mid-loop maximum would swallow older-but-new items (newest-first).
+    // `?? 0` is load-bearing: a fresh engine hands in `positions: {}`, and an unset position must
+    // still advance to a numeric high-water mark (never undefined/NaN/null).
     const issues = await this.opts.client.listIssues(this.opts.repo);
     let start = state.positions.issue;
-    let maxSeen = start;
+    let maxSeen = start ?? 0;
     for (const it of issues) {
       if (it.id <= start) break;
       if (it.pull_request !== undefined) continue; // pulls feed owns PRs
@@ -67,7 +69,7 @@ export class GitHubSource implements Source {
 
     const comments = await this.opts.client.listIssueComments(this.opts.repo);
     start = state.positions.issue_comment;
-    maxSeen = start;
+    maxSeen = start ?? 0;
     for (const it of comments) {
       if (it.id <= start) break;
       const n = issueNumberFromUrl(it.issue_url);
@@ -79,7 +81,7 @@ export class GitHubSource implements Source {
 
     const pulls = await this.opts.client.listPulls(this.opts.repo);
     start = state.positions.pr;
-    maxSeen = start;
+    maxSeen = start ?? 0;
     for (const it of pulls) {
       if (it.id <= start) break;
       if (wanted(`github:pr:${it.id}`)) out.push(this.toTrigger("pr", it.id, it.user, it.body, it.created_at,
@@ -90,7 +92,7 @@ export class GitHubSource implements Source {
 
     const reviews = await this.opts.client.listReviewComments(this.opts.repo);
     start = state.positions.review_comment;
-    maxSeen = start;
+    maxSeen = start ?? 0;
     for (const it of reviews) {
       if (it.id <= start) break;
       const n = issueNumberFromUrl(it.pull_request_url);

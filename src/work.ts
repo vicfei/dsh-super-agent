@@ -116,9 +116,18 @@ export async function deliverPullRequest(
     const headSha = await git(result.worktree, ["rev-parse", "HEAD"]);
     await git(result.worktree, [...pushAuthArgs(await client.currentToken()), "push", "origin", `HEAD:refs/heads/${branch}`]);
     const base = await client.getDefaultBranch(repo);
-    const firstLine = trigger.body.trim().split("\n")[0].slice(0, 72) || "ticket work";
+    // A clean title, live finding (PR #4, harness-native): the raw first body line can be a
+    // markdown header ("## Current behavior…"). Prefer the worker's own one-line summary,
+    // then the first non-header body line, both stripped of emphasis noise.
+    const summaryLine = result.output.match(/^done\s*[—-]\s*(.+)$/m)?.[1];
+    const firstBodyLine = trigger.body.trim().split("\n")
+      .map((l) => l.trim())
+      .find((l) => l && !l.startsWith("#") && !/^[=-]{3,}$/.test(l))
+      ?.replace(/[*_`>]/g, "")
+      .trim();
+    const titleBase = (summaryLine ?? firstBodyLine ?? "ticket work").replace(/\s+/g, " ").slice(0, 72);
     const pr = await client.createPullRequest(repo, {
-      title: `Ticket #${ticket.id}: ${firstLine}`,
+      title: `Ticket #${ticket.id}: ${titleBase}`,
       head: branch,
       base,
       body: [

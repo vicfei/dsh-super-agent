@@ -144,3 +144,27 @@ describe("PR delivery loop", () => {
     expect(existsSync(join(dir, "work"))).toBe(true); // worktree kept for inspection
   });
 });
+
+describe("PR title hygiene (live finding, harness-native PR #4)", () => {
+  it("prefers the worker's summary line and never lifts a markdown header from the body", async () => {
+    const item = acceptItem(2);
+    item.trigger.body = "## Current behavior (verified against main)\n\nThree defects:\nline-length check is late";
+    engine.ingest([item]);
+    const exec = executorWith(
+      `git -C "$DSH_DIR" -c user.email=w@w -c user.name=worker commit --allow-empty -m "fix: caps" -q && echo "done — enforce per-event byte caps in the SSE decoder"`,
+    );
+    await runWork(engine, exec, "o/r", client);
+    expect(createdPRs[0].title).toBe("Ticket #1: enforce per-event byte caps in the SSE decoder");
+  });
+
+  it("falls back to the first non-header body line when the worker prints no summary", async () => {
+    const item = acceptItem(3);
+    item.trigger.body = "## Current behavior\n\nThree defects:\nline-length check is late";
+    engine.ingest([item]);
+    const exec = executorWith(
+      `git -C "$DSH_DIR" -c user.email=w@w -c user.name=worker commit --allow-empty -m "fix: caps" -q`,
+    );
+    await runWork(engine, exec, "o/r", client);
+    expect(createdPRs[0].title).toBe("Ticket #1: Three defects:");
+  });
+});

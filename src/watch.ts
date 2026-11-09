@@ -10,10 +10,12 @@ import type { Executor } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
 import { interceptApprovalCommands, runApprovalSweep } from "./approval.js";
 import { evaluateGate } from "./gate.js";
+import { memoryPolicyOf } from "./domain.js";
+import type { MemoryDistiller } from "./memory.js";
 import { runMergeSweep } from "./merge.js";
 import { runWatchdogSweep } from "./watchdog.js";
 import { classify, formatOutcome } from "./runner.js";
-import { runPromoteSweep, runWork } from "./work.js";
+import { runPromoteSweep, runWork, type WorkMemory } from "./work.js";
 
 export type AssessmentFn = (t: Trigger) => Promise<"positive" | "negative"> | "positive" | "negative";
 
@@ -28,6 +30,8 @@ export interface WatchOptions {
   repo: string;
   policy: Policy;
   assessment: AssessmentFn;
+  /** v1.4: distill pass for two-tier memory. Absent = feature inert (policy gates it anyway). */
+  memoryDistiller?: MemoryDistiller;
   intervalMs?: number; // default 30s, ±20% jitter
   cycles?: number; // test hook: run N cycles then return (undefined = forever)
   log?: (line: string) => void;
@@ -89,7 +93,15 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
   const report = engine.ingest(batch, nextBySource);
   for (const refusal of report.refusals) log(`[REFUSED] ${refusal}`);
 
-  const reports = await runWork(engine, executor, repo, client, channels);
+  // v1.4 two-tier memory: the policy gates the whole feature; the accept ladder is the mode
+  // itself (observe records would-inject candidates, auto accepts at distill time).
+  const mp = memoryPolicyOf(policy);
+  const workMemory: WorkMemory | undefined =
+    opts.memoryDistiller && mp.enabled
+      ? { distiller: opts.memoryDistiller, autoAccept: policy.acceptMode === "auto", maxInject: mp.maxInject, maxAccepted: mp.maxAccepted }
+      : undefined;
+
+  const reports = await runWork(engine, executor, repo, client, channels, workMemory);
   for (const r of reports) log(`#${r.ticketId} [${r.outcome}] ${r.detail}`);
 
   // Auto-merge sweep (M6-1) — no-op unless policy.merge.enabled; structural brakes inside.

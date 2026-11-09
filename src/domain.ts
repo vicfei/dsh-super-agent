@@ -84,6 +84,9 @@ export interface Policy {
   /** Routines (v1.2): owner-authored timer triggers that still pass admission control.
    * Absent or enabled:false = disabled — nothing fires by default. */
   routines?: RoutinesPolicy;
+  /** Two-tier memory (v1.4): distilled facts from completed tickets, injected into future
+   * dispatches. Absent or enabled:false = disabled — every ticket starts from zero. */
+  memory?: Partial<MemoryPolicy>;
 }
 
 /** One scheduled routine: a prompt plus when to fire it and where to report. */
@@ -121,6 +124,31 @@ export function defaultSpeculationPolicy(): SpeculationPolicy {
 
 export function speculationPolicyOf(policy: Policy): SpeculationPolicy {
   return { ...defaultSpeculationPolicy(), ...(policy.speculation ?? {}) };
+}
+
+/**
+ * Two-tier memory (v1.4, issue #110): the durable tier. When a ticket completes, a distill
+ * pass extracts conventions/decisions/gotchas; accepted memories ride along with future
+ * DSH_PROMPT.md files. The trust ladder applies like everywhere else: observe records
+ * candidates but never injects (would-inject is the evidence); auto accepts at distill time.
+ * Memory lives only in the engine DB — never as files or commits in the target repo.
+ */
+export interface MemoryPolicy {
+  enabled: boolean;
+  /** Accepted memories injected per dispatch (recency-ordered). */
+  maxInject: number;
+  /** Accepted memories kept per repo; the oldest is pruned beyond the cap. */
+  maxAccepted: number;
+  /** Distill candidates recorded per completed ticket (the pass itself caps at 3). */
+  maxPerTicket: number;
+}
+
+export function defaultMemoryPolicy(): MemoryPolicy {
+  return { enabled: false, maxInject: 8, maxAccepted: 32, maxPerTicket: 3 };
+}
+
+export function memoryPolicyOf(policy: Policy): MemoryPolicy {
+  return { ...defaultMemoryPolicy(), ...(policy.memory ?? {}) };
 }
 
 /**

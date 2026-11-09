@@ -100,6 +100,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | §3 两级过滤(Fast/Slow Path) | 确定性门禁 → LLM 评估,仅 inferred,失败关闭 | v0.3/命名 v0.9 |
 | §3 订阅直通 | 后续消息并入活工单作上下文;不重复开工 | v0.7 |
 | §3 Inline & Spill + 链式召回 | 8k 内联预算,全文 spill 到 worktree 的 `.dsh/spill/<id>.md` | v0.9.1 |
+| §3 记忆两层 | 持久层:从已完成工单蒸馏出的事实随未来的 prompt 出行——**observe 只记 would-inject 证据,auto 才注入** | v1.4 |
 | §3 投机执行 + 交付闸 | 无声预演;**交付只由人的 promote 触发** | v1.0 |
 | §3 Routines / 主动性 | 定时 Source——时钟敲同一扇门:cron + 逐 routine 时区 + 重启安全补跑,过准许表 | v1.2 |
 | §4 异步 ReAct、双工 | 子进程 worker + 环境变量契约、进程组超时、outbox 回帖 | v0.3+ |
@@ -184,6 +185,8 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 **`dsh init` + `dsh doctor`(v1.2)。** 头十分钟,不再手写 JSON。`init` 是六步零依赖向导(纯 readline,一行一问):从 git origin 探仓库、从 `GITHUB_TOKEN` whoami 认身份、PATH 上探测 agent CLI 并可选 `--version` 冒烟、模式阶梯(推荐 observe)、沙箱、通道及其精确的环境清单——原子写出 `./dsh/policy.json` + `./dsh/executor.json`;文件里永远没有密钥,不加 `--force` 永不覆盖(覆盖前留 `.bak.<时间戳>`)。`doctor` 是只读的讲真话者:node ≥ 20、凭证、仓库、agent CLI、**沙箱(开了却没有 wrapper 是 FAIL——兑现不了的声明)**、executor 引用的每个环境变量、策略 schema + 危险组合启发式、routines 排程 + 下次触发、db 可写性、通道配置——默认**完全离线**(`--probe-network` 才做 whoami 和仓库权限),退出码对 CI 讲真话:**0 干净 · 1 有警告 · 2 有失败**。
 
 **Fast Path / Slow Path(v0.9 命名对齐)。** 文章的两级过滤,用我们的话说:**Fast Path** 是确定性门禁——准许表、名单、宿主强制,回路里没有模型;**Slow Path** 是 LLM 评估,只对 inferred 候选调用(explicit 永不等待),任何出错失败关闭判 negative。同线程的**触发批处理**就是订阅旁路:一个线程上的突发只花一次 Slow Path 调用(按线程计)、开一张工单——后续消息并入上下文,不再重评。
+
+**记忆两层(v1.4)。** v0.9 的 Inline & Spill 守住的是单张工单的工作记忆;这一版补上另一半——**跨工单**的知识,worker 不再每次开工都重新学习你仓库的约定。工单完成时,一道蒸馏从报告里提取持久事实(约定、决策、坑——至多 3 行,带溯源:是哪张工单学到的)。信任阶梯与处处一致:**observe** 下蒸馏结果只记为候选、**永不注入**——would-inject 记录就是你的证据,与 would-accept 同构;**auto** 下蒸馏即接受,随未来的 `DSH_PROMPT.md` 以 *Project memory* 段出行——prompt 里明确标注这些是工作笔记、**不是某个人的指令**(门禁是代码,prompt 翻不动它)。记忆只存在引擎 DB 里——绝不变成目标仓库的文件或提交;有上限(单次注入 `maxInject`、单仓 `maxAccepted`,超限裁最旧),面板可见,默认**关闭**。
 
 **执行器沙箱(v1.2 起默认开启)。** 准入门禁决定*谁可以开工*,沙箱决定开工后的 worker 能碰什么——而**约束是常态,关闭才是例外**。`init` 写出的配置和自带的示例在 wrapper 存在时默认开启:**bwrap**(Linux)/ **sandbox-exec**(macOS):根目录只读、仅工单 worktree 可写、**默认断网**(除非 `allowNetwork`)、**环境变量白名单**——子进程只见 `PATH/HOME/…` + `DSH_*` + 你配置的 `passEnv`,其余一概不见,`GITHUB_TOKEN` 永远到不了 worker。wrapper 缺失是启动时的硬错误、doctor 的失败项——绝不静默降级为未沙箱运行。需要自身认证环境变量的 worker 必须在 `passEnv` 里列名(秘密样命名会被大声拒绝)。确需关闭时设 `enabled: false`,并明白 worker 此后未受约束。
 

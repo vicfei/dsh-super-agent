@@ -8,6 +8,7 @@ import { clipReply } from "./clip.js";
 import type { Engine, SpillFile } from "./engine.js";
 import { Executor, type ExecutorResult } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
+import type { MemoryDistiller } from "./memory.js";
 import type { ReplyChannel } from "./source.js";
 import { spawn } from "node:child_process";
 
@@ -32,6 +33,37 @@ export interface WorkReport {
   assignmentId: number;
   outcome: "done" | "failed" | "refused";
   detail: string;
+}
+
+/**
+ * Two-tier memory context (v1.4). Built by the watch caller from policy + the LLM distiller;
+ * absent (default) = the feature is inert — no injection, no distill calls.
+ * `autoAccept` is the ladder: observe records candidates only (would-inject evidence),
+ * auto accepts distilled facts at distill time.
+ */
+export interface WorkMemory {
+  distiller: MemoryDistiller;
+  autoAccept: boolean;
+  maxInject: number;
+  maxAccepted: number;
+}
+
+/** v1.4 write path — distills a completed ticket's report into durable memory. Fails soft:
+ *  the ticket is already done; memory is a bonus tier and must never retro-fail it. */
+async function distillIntoMemory(
+  engine: Engine,
+  memory: WorkMemory | undefined,
+  repo: string,
+  ticketId: number,
+  report: string,
+): Promise<void> {
+  if (!memory) return;
+  try {
+    const bodies = await memory.distiller({ repo, ticketId, report });
+    if (bodies.length > 0) engine.recordMemories({ repo, ticketId, bodies, autoAccept: memory.autoAccept, maxAccepted: memory.maxAccepted });
+  } catch (e) {
+    console.warn(`[memory] distill after #${ticketId} failed soft: ${e instanceof Error ? e.message : e}`);
+  }
 }
 
 /** git, quietly — resolves with stdout or throws with stderr context. */
@@ -117,16 +149,19 @@ export async function runWork(
   repo: string,
   client: GitHubClient | null,
   channels: ReplyChannel[] = [],
+  memory?: WorkMemory,
 ): Promise<WorkReport[]> {
   const queued = engine.claimQueued(executor.cfg.maxWorkers); // slots
   const reports: WorkReport[] = [];
+  // v1.4 read path: accepted memories ride along with every dispatch in this sweep.
+  const injectable = memory ? engine.injectableMemories(repo, memory.maxInject) : [];
 
   for (const t of queued) {
     const assignmentId = engine.startAssignment(t.id, ""); // running — worktree filled on success
     if (t.spills.length > 0) writeSpills(executor.worktreeOf(t.id), t.spills); // before the run: recall must be readable
     let result: ExecutorResult | undefined;
     try {
-      result = await executor.run({ id: t.id, threadId: t.threadId }, { body: t.body, author: t.author }, repo);
+      result = await executor.run({ id: t.id, threadId: t.threadId }, { body: t.body, author: t.author }, repo, injectable);
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       engine.endAssignment(assignmentId, null, false, detail);
@@ -154,9 +189,11 @@ export async function runWork(
       // v1.0: rehearsal completes in total silence — no push, no PR, no reply. The deliver
       // gate is a human promote; until then nothing is said and nothing leaves the worktree.
       engine.completeTicket(t.id);
+      await distillIntoMemory(engine, memory, repo, t.id, reportBody(t.id, result));
       reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: "exit 0 · speculative (silent, awaiting promote)" });
     } else if (ok) {
       engine.completeTicket(t.id);
+      await distillIntoMemory(engine, memory, repo, t.id, reportBody(t.id, result));
       const delivery = client ? await deliverPullRequest(client, repo, t, { body: t.body, author: t.author }, result) : {};
       if (delivery.prNumber !== undefined) {
         engine.recordDelivery({

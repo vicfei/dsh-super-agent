@@ -115,6 +115,16 @@ CREATE TABLE IF NOT EXISTS spill (
   content TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS memory (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  repo TEXT NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'candidate', -- candidate | accepted | rejected
+  source_ticket INTEGER NOT NULL REFERENCES ticket(id),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_repo ON memory(repo, status, id);
 `;
 
 export interface IngestItem {
@@ -816,6 +826,57 @@ export class Engine {
     const delay = Math.min(BACKOFF_BASE_MS * 2 ** attempts, BACKOFF_CAP_MS);
     this.db.prepare("UPDATE effect SET attempts = ?, next_due_at = ?, last_error = ?, updated_at = ? WHERE id = ?")
       .run(attempts, new Date(now.getTime() + delay).toISOString(), error, now.toISOString(), id);
+  }
+
+  // ── two-tier memory (v1.4, issue #110) — the durable tier, engine-DB only ──
+
+  /**
+   * Record distilled facts from a completed ticket. In auto mode they are accepted at distill
+   * time (the ladder: the mode switch is the human control); in observe they stay candidates —
+   * recorded as would-inject evidence, never injected. Accepting prunes the oldest beyond
+   * maxAccepted so memory cannot grow unbounded.
+   */
+  recordMemories(input: { repo: string; ticketId: number; bodies: string[]; autoAccept: boolean; maxAccepted: number }): number {
+    const now = new Date().toISOString();
+    const bodies = input.bodies.filter((b) => b.trim().length > 0);
+    if (bodies.length === 0) return 0;
+    const insert = this.db.prepare(`INSERT INTO memory (repo, body, status, source_ticket, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)`);
+    for (const body of bodies) {
+      insert.run(input.repo, body.trim(), input.autoAccept ? "accepted" : "candidate", input.ticketId, now, now);
+    }
+    if (input.autoAccept) this.pruneMemories(input.repo, input.maxAccepted);
+    return bodies.length;
+  }
+
+  /** Recency-ordered accepted memories for a repo's next dispatch (the injection read path). */
+  injectableMemories(repo: string, limit: number): string[] {
+    const rows = this.db.prepare(
+      "SELECT body FROM memory WHERE repo = ? AND status = 'accepted' ORDER BY id DESC LIMIT ?",
+    ).all(repo, limit) as Record<string, unknown>[];
+    return rows.map((r) => String(r.body));
+  }
+
+  private pruneMemories(repo: string, maxAccepted: number): void {
+    this.db.prepare(`DELETE FROM memory WHERE repo = ? AND status = 'accepted' AND id NOT IN (
+      SELECT id FROM memory WHERE repo = ? AND status = 'accepted' ORDER BY id DESC LIMIT ?)`).run(repo, repo, maxAccepted);
+  }
+
+  /** Panel/stats view: counts per status plus the most recent rows with provenance. */
+  memoryView(limit = 20): { counts: { candidate: number; accepted: number; rejected: number }; recent: { id: number; repo: string; body: string; status: string; sourceTicket: number; createdAt: string }[] } {
+    const counts: Record<string, number> = {};
+    for (const r of this.db.prepare("SELECT status, COUNT(*) c FROM memory GROUP BY status").all() as Record<string, unknown>[]) {
+      counts[String(r.status)] = Number(r.c);
+    }
+    const rows = this.db.prepare("SELECT id, repo, body, status, source_ticket, created_at FROM memory ORDER BY id DESC LIMIT ?")
+      .all(limit) as Record<string, unknown>[];
+    return {
+      counts: { candidate: counts.candidate ?? 0, accepted: counts.accepted ?? 0, rejected: counts.rejected ?? 0 },
+      recent: rows.map((r) => ({
+        id: Number(r.id), repo: String(r.repo), body: String(r.body),
+        status: String(r.status), sourceTicket: Number(r.source_ticket), createdAt: String(r.created_at),
+      })),
+    };
   }
 }
 

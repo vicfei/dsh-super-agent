@@ -173,14 +173,20 @@ export async function runApprovalSweep(
   if (!approvalEnabled(policy)) return 0;
   let rendered = 0;
 /**
- * Render-once guard: a ticket gets its approval ask enqueued exactly one time (the outbox
- * owns retries). Checking the approval_request row instead caused a render storm — with
- * several eligible tickets, each openApprovalRequest() supersedes the previous one's row
- * (newest-wins is per-thread by design), so the next sweep re-rendered the others, which
- * superseded again, forever (live finding 2026-11-06: 4 tickets × every 15s cycle).
+ * Render-once guard, per ASSIGNMENT: a ticket's approval ask for one failed run is enqueued
+ * exactly once (the outbox owns retries) — same assignment, same key, no matter how many
+ * sweeps. Checking the approval_request row instead caused a render storm (live finding
+ * 2026-11-06), but keying by ticket alone (#114, live finding 2026-11-10) swallowed the
+ * NEXT ask forever: a requeued ticket that failed again never re-rendered (the owner's
+ * digit got "Nothing pending"), and a speculative 🧪 promote was suppressed by an earlier
+ * needs-person ask on the same ticket. The assignment that caused the state is part of the
+ * key, so every new run earns exactly one fresh ask.
  */
-const renderedOnce = (ticketId: number): boolean =>
-  Boolean(engine.db.prepare("SELECT 1 FROM effect WHERE kind = 'reply' AND key = ?").get(`approval-req:${ticketId}`));
+const lastAssignmentOf = (ticketId: number): number =>
+  Number((engine.db.prepare("SELECT MAX(id) AS m FROM assignment WHERE ticket_id = ?").get(ticketId) as { m: number | null }).m ?? 0);
+
+const renderedOnce = (ticketId: number, assignmentId: number): boolean =>
+  Boolean(engine.db.prepare("SELECT 1 FROM effect WHERE kind = 'reply' AND key = ?").get(`approval-req:${ticketId}:${assignmentId}`));
 
 
   const route = (opener: string): string | null =>
@@ -188,11 +194,12 @@ const renderedOnce = (ticketId: number): boolean =>
 
   for (const t of engine.tickets()) {
     if (t.stage !== "needs-person") continue;
-    if (renderedOnce(t.id)) continue;
+    const aid = lastAssignmentOf(t.id);
+    if (renderedOnce(t.id, aid)) continue;
     const thread = route(t.opener);
     if (!thread) continue;
     engine.openApprovalRequest(thread, t.id, "needs-person");
-    engine.enqueueReply(`approval-req:${t.id}`, thread,
+    engine.enqueueReply(`approval-req:${t.id}:${aid}`, thread,
       `🔑 [approval needed] Ticket #${t.id} is waiting for a person.\n${ticketLine(engine, t.id)}\n1 requeue (run again) · 2 stop · 3 detail\n(reply with just the number)`);
     rendered++;
     log(`approval request rendered: #${t.id} → ${thread.split(":")[0]} ops thread`);
@@ -201,11 +208,12 @@ const renderedOnce = (ticketId: number): boolean =>
   for (const t of engine.tickets()) {
     if (!(t.speculative && t.state === "ended")) continue;
     if (engine.db.prepare("SELECT 1 FROM delivery WHERE ticket_id = ?").get(t.id)) continue;
-    if (renderedOnce(t.id)) continue;
+    const aid = lastAssignmentOf(t.id);
+    if (renderedOnce(t.id, aid)) continue;
     const thread = route(t.opener);
     if (!thread) continue;
     engine.openApprovalRequest(thread, t.id, "speculative");
-    engine.enqueueReply(`approval-req:${t.id}`, thread,
+    engine.enqueueReply(`approval-req:${t.id}:${aid}`, thread,
       `🧪 [rehearsal ready] Ticket #${t.id} was silently rehearsed and awaits the deliver gate.\n${ticketLine(engine, t.id)}\n1 promote (push + PR) · 2 discard · 3 detail\n(reply with just the number)`);
     rendered++;
     log(`promote request rendered: #${t.id} → ${thread.split(":")[0]} ops thread`);

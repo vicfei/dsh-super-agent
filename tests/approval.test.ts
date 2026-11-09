@@ -94,14 +94,42 @@ describe("runApprovalSweep rendering", () => {
     const second = await runApprovalSweep(engine, policy, [ch]);
     expect(second).toBe(0); // …and never again — even though openApprovalRequest superseded the older row
     const keys = (engine.db.prepare("SELECT key FROM effect WHERE key LIKE 'approval-req:%' ORDER BY id").all() as { key: string }[]).map((r) => r.key).sort();
-    expect(keys).toEqual(["approval-req:1", "approval-req:2"]); // exactly one ask per ticket
+    expect(keys).toEqual(["approval-req:1:0", "approval-req:2:0"]); // exactly one ask per ticket (no assignment yet → :0)
+  });
+
+  it("a requeued ticket that fails again re-renders its ask — new assignment, new key (#114)", async () => {
+    await setupNeedsPerson();
+    const ch = channel();
+    expect(await runApprovalSweep(engine, policy, [ch])).toBe(1);
+    expect(await runApprovalSweep(engine, policy, [ch])).toBe(0); // same assignment: the storm guard holds
+    engine.requeueTicket(1);
+    const aid2 = engine.startAssignment(1, "");
+    engine.endAssignment(aid2, 1, false, "boom again");
+    await drain(ch);
+    // the live bug: this stayed 0 forever and the owner's digit got "Nothing pending"
+    expect(await runApprovalSweep(engine, policy, [ch])).toBe(1);
+  });
+
+  it("a speculative promote renders even after an earlier needs-person ask on the same ticket (#114)", async () => {
+    await setupNeedsPerson();
+    const ch = channel();
+    await runApprovalSweep(engine, policy, [ch]); // 🔑 rendered for assignment 1
+    engine.requeueTicket(1);
+    const aid2 = engine.startAssignment(1, "");
+    engine.endAssignment(aid2, 0, false, "done");
+    engine.db.prepare("UPDATE ticket SET speculative = 1 WHERE id = 1").run();
+    engine.completeTicket(1);
+    await drain(ch);
+    const rendered = await runApprovalSweep(engine, policy, [ch]);
+    expect(rendered).toBe(1); // 🧪 for assignment 2 — was suppressed by the old ticket-only key
+    expect(ch.sent.some((b) => b.includes("rehearsal ready"))).toBe(true);
   });
 
   it("a terminally failed ask is not re-rendered either — the outbox owned the retries", async () => {
     await setupNeedsPerson();
     const ch = channel();
     await runApprovalSweep(engine, policy, [ch]); // rendered + drained (delivered in the test channel)
-    const fx = engine.db.prepare("SELECT id FROM effect WHERE key = 'approval-req:1'").get() as { id: number };
+    const fx = engine.db.prepare("SELECT id FROM effect WHERE key = 'approval-req:1:1'").get() as { id: number };
     engine.failEffect(fx.id, "ret=-2", false); // terminal — delivery gave up
     expect(await runApprovalSweep(engine, policy, [ch])).toBe(0);
   });

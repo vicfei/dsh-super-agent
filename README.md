@@ -15,9 +15,7 @@ An independent, executor-agnostic implementation of the [DeepSeek Super-agent](h
 </p>
 
 <p align="center">
-  <a href="docs/promo-en.mp4" title="57-second intro video (with subtitles)">
-    <img src="docs/promo-thumb.png" alt="dsh-super-agent promo — click to play" width="880">
-  </a>
+  <video src="https://github.com/user-attachments/assets/feb00f9f-9f72-40eb-b74b-78c2e6d7802c" controls></video>
 </p>
 <p align="center"><sub>▶ 57-second intro — admission control, observe mode, one-digit approvals (subtitled)</sub></p>
 

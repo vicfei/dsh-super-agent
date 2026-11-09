@@ -67,6 +67,9 @@
 <h2>Routines — the clock</h2>
 <div id="routines"></div>
 
+<h2>Memory — the durable tier</h2>
+<div id="memory"></div>
+
 <h2>Pull requests</h2>
 <div id="deliveries"></div>
 
@@ -156,6 +159,14 @@ async function render() {
     ? '<div class="quiet">no approval requests waiting</div>'
     : aps.map(a => `<div class="card"><span class="badge b-person">${esc(a.kind)}</span>
         ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ops thread · since ${fmt(a.createdAt)}</div>`).join('');
+
+  const mem = s.memory || { counts: {}, recent: [] };
+  const memTotal = (mem.counts.accepted || 0) + (mem.counts.candidate || 0);
+  document.getElementById('memory').innerHTML = memTotal === 0
+    ? '<div class="quiet">no distilled memories — two-tier memory is off or nothing completed yet</div>'
+    : `<div class="quiet">accepted ${mem.counts.accepted || 0} · candidates (would-inject, observe) ${mem.counts.candidate || 0} · rejected ${mem.counts.rejected || 0}</div>` +
+      (mem.recent || []).map(m => `<div class="card"><span class="badge ${m.status === 'accepted' ? 'b-accept' : 'b-shadow'}">${esc(m.status)}</span>
+          ${esc(m.body)} <span class="quiet">— ticket #${m.sourceTicket} · ${esc(m.repo)}</span></div>`).join('');
 
   const rt = s.routines || { enabled: false, items: [] };
   document.getElementById('routines').innerHTML = !rt.enabled

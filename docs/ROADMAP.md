@@ -138,6 +138,26 @@ merge conditions are checkable facts, not model judgment.
       assessment budget (#91), the approval render storm / render-once (#92), panel CSRF
       guards + the promote route fix (#97), stop-is-final (#98), the catch-up slot cap (#99).
 
+## Milestone 14 — two-tier memory: the worker remembers (issue #110)
+
+v0.9's Inline & Spill solved working-memory overflow *within* a ticket. M14 solves knowledge
+*across* tickets — every dispatch re-learning the repo's conventions is the waste the article's
+two-tier memory design exists to remove.
+
+- [x] Write path: when a ticket completes, a distill pass over the report extracts durable
+      facts — conventions, decisions, gotchas (≤3 lines, `src/memory.ts`). Same OpenAI-compatible
+      endpoint as the assessor (`--assessment llm` provides it); fails soft — a distill error
+      never retro-fails a completed ticket.
+- [x] Trust ladder: observe records candidates but never injects (would-inject evidence, like
+      would-accept); auto accepts at distill time. The mode switch is the human control.
+- [x] Read path: accepted memories (recency-ordered, `maxInject` cap) ride with every
+      DSH_PROMPT.md as a *Project memory* section, caveated as working notes — not instructions
+      from a person (they cannot flip a gate; the prompt is text, the gate is code).
+- [x] Engine-owned storage: the `memory` table lives in the engine DB only — never files or
+      commits in the target repo; `maxAccepted` prunes oldest-first; every row carries
+      `source_ticket` provenance; the panel shows counts + recent rows.
+- [x] Default off (`policy.memory.enabled`), like every autonomous capability here.
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)

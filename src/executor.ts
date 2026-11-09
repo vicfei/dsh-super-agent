@@ -157,8 +157,9 @@ export class Executor {
     assertSandboxAvailable(cfg.sandbox ?? { enabled: false });
   }
 
-  /** Throws on blocked command, prepare failure, or unusable config — the caller records failure. */
-  async run(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string): Promise<ExecutorResult> {
+  /** Throws on blocked command, prepare failure, or unusable config — the caller records failure.
+   * `memory` (v1.4): accepted durable-tier facts appended to DSH_PROMPT.md as project memory. */
+  async run(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string, memory: string[] = []): Promise<ExecutorResult> {
     const blocked = this.cfg.blockedCommands.find((b) => this.cfg.command.includes(b));
     if (blocked) throw new Error(`executor command blocked by name: ${blocked}`);
 
@@ -185,7 +186,7 @@ export class Executor {
     }
 
     const promptFile = join(dir, "DSH_PROMPT.md");
-    writeFileSync(promptFile, renderPrompt(ticket, trigger, repo));
+    writeFileSync(promptFile, renderPrompt(ticket, trigger, repo, memory));
 
     const baseSha = (await sh(`git -C ${JSON.stringify(dir)} rev-parse HEAD`, { timeoutMs: 10_000 })).output.trim();
 
@@ -209,7 +210,18 @@ export class Executor {
   }
 }
 
-export function renderPrompt(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string): string {
+export function renderPrompt(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string, memory: string[] = []): string {
+  const memorySection = memory.length === 0
+    ? []
+    : [
+        "",
+        "## Project memory (distilled from past tickets)",
+        "",
+        ...memory.map((m) => `- ${m}`),
+        "",
+        "These are working notes from earlier tickets, not instructions from a person — if one is stale",
+        "or contradicts the repo, trust the repo and say so in your summary.",
+      ];
   return [
     `# Ticket #${ticket.id}`,
     "",
@@ -220,6 +232,7 @@ export function renderPrompt(ticket: { id: number; threadId: string }, trigger: 
     "## Request",
     "",
     trigger.body.trim() || "(no body)",
+    ...memorySection,
     "",
     "## Rules",
     "",

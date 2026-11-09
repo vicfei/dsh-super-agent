@@ -44,6 +44,8 @@ export interface PanelState {
   health: ReturnType<typeof healthReport>;
   /** v1.3: the clock — each routine with its next fire, from the engine's timer positions. */
   routines: { enabled: boolean; items: RoutinePanelItem[] };
+  /** v1.4: the durable tier — distilled facts with provenance; candidates are the would-inject evidence. */
+  memory: ReturnType<Engine["memoryView"]>;
   /** v1.3 slice 2: the doctor's checks, embedded (offline facts only; cached server-side). Null when not wired. */
   doctor: DoctorReport | null;
 }
@@ -117,6 +119,7 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
         approvals: engine.pendingApprovals(),
         health: healthReport(engine),
         routines: { enabled: routinesEnabled(policy), items },
+        memory: engine.memoryView(),
         doctor: await doctorNow(),
       };
       send(200, "application/json", JSON.stringify(state));

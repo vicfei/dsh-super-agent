@@ -11,6 +11,7 @@ import { classify, formatOutcome } from "./runner.js";
 import { evaluateGate } from "./gate.js";
 import type { Assessor } from "./assess.js";
 import { llmAssessor, stubAssessor } from "./assess.js";
+import { llmDistiller } from "./memory.js";
 import { GitHubClient } from "./github/client.js";
 import { AppTokenProvider, appAuthFromEnv } from "./github/app-auth.js";
 import type { ReplyChannel, Source } from "./source.js";
@@ -230,6 +231,19 @@ function buildAssessor(): Assessor {
   });
 }
 
+/** v1.4 memory distiller — same endpoint as the assessor (one LLM dependency); null when the
+ *  assess layer is a stub, so two-tier memory needs `--assessment llm` too. Policy still gates. */
+function buildDistiller() {
+  if (args.assessment !== "llm") return null;
+  const baseUrl = args["assess-base-url"] ?? process.env.ASSESS_BASE_URL;
+  if (!baseUrl) return null;
+  return llmDistiller({
+    baseUrl,
+    model: args["assess-model"] ?? process.env.ASSESS_MODEL ?? "",
+    apiKey: process.env.ASSESS_API_KEY ?? process.env.OPENAI_API_KEY,
+  });
+}
+
 try {
   // Credential precedence (M6-2): explicit --token > GitHub App env > GITHUB_TOKEN > anonymous.
   function buildClient(): { client: GitHubClient; identity: string } {
@@ -387,6 +401,7 @@ try {
         const gate = evaluateGate(policy, t);
         return gate.strength === "inferred" ? assessor.assess(t) : "positive";
       },
+      memoryDistiller: buildDistiller() ?? undefined,
       intervalMs: args.interval ? Number(args.interval) * 1000 : undefined,
     });
   } else if (command === "work") {

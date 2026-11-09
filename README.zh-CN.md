@@ -112,6 +112,9 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 ## 快速开始
 
+想接入你**自己的** agent CLI、渠道或信任阶梯某一档?[COOKBOOK](docs/COOKBOOK.md)(英文)里有全部配方:子进程契约、生产验证过的 BYOM HTTP worker 模式、策略片段、沙箱、微信登录、守护进程引导。
+
+
 两条命令跑起来(v1.2)——向导写配置,doctor 验配置:
 
 ```bash

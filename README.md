@@ -116,7 +116,7 @@ Every famous concept from *Super-agent: Design Explorations*, and where it lives
 
 ## Quick start
 
-Two commands to a running agent (v1.2) — the wizard writes the configs, the doctor verifies them:
+Two commands to a running agent (v1.2) — the wizard writes the configs, the doctor verifies them. Wiring your **own** agent CLI, channel, or ladder step? The [COOKBOOK](docs/COOKBOOK.md) has the recipes (subprocess contract, a BYOM HTTP worker pattern proven in production, policy snippets, sandbox, WeChat login, daemon bootstrap).
 
 ```bash
 npx @vicfei/dsh-super-agent init    # six-step wizard → ./dsh/policy.json + ./dsh/executor.json (observe by default)

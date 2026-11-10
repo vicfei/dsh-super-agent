@@ -60,6 +60,22 @@ identity. Three traps we hit live, so you don't have to:
 - write the test yourself if the model won't — a green suite without a new test for new
   behavior proves nothing.
 
+## 1½. The worker's built-in scope ethic
+
+Every `DSH_PROMPT.md` carries a scope contract (borrowed from the prototype's
+`prompts/team/scope.md` — stop **by impact, not by effort**):
+
+- **Carry through**: an authorized local change goes through implementation, checks and review
+  to completion. File counts, failing tests and layout defects alone are *not* reasons to stop.
+- **Pause** (via the approval file): when the scope requires breaking existing caller
+  expectations, changing a module's responsibility, coordinated redesign across modules — or
+  when feasible approaches repeatedly fail. Name the specific interface and caller impact.
+- **Draft honestly**: preserve useful partial work as an explicitly incomplete draft and
+  report what is blocked; never fabricate a PR when no useful safe change exists.
+
+Until prompt overrides ship (v1.6), the contract is built into `renderPrompt` — read it, and
+if your team needs different scope rules, that file is where they live.
+
 ## 2. The worker's permission ask — `$DSH_APPROVAL_FILE`
 
 A worker that needs an outward action (or hits something the sandbox blocks) writes

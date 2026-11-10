@@ -158,3 +158,16 @@ describe("P1 — the shipped default agrees with init", () => {
     expect(example.$comment).toContain("exception"); // the migration note ships with the flip
   });
 });
+
+describe("renderPrompt scope ethic (borrowed from the prototype's team/scope)", () => {
+  const p = renderPrompt({ id: 1, threadId: "t" }, { body: "x", author: "a" }, "o/r");
+  it("carries through for effort reasons, pauses for impact reasons", () => {
+    expect(p).toContain("NOT reasons to stop");
+    expect(p).toContain("breaking existing caller expectations");
+    expect(p).toContain("Name the specific interface and caller impact");
+  });
+  it("drafts honestly, never fabricates", () => {
+    expect(p).toContain("explicitly incomplete draft");
+    expect(p).toContain("Never fabricate a PR");
+  });
+});

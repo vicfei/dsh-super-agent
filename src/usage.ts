@@ -18,6 +18,7 @@ Commands:
   panel     serve the awaiting-human panel (http://127.0.0.1:8787)
   merge     sweep open ticket PRs — merge those meeting policy.merge requirements (default off)
   routines  list | validate | fire <id> — scheduled timer triggers through the admission gate
+  events    tail [n] | verify — the hash-chained evidence ledger (chained, subscribable)
   init      six-step wizard writing ./dsh/policy.json + ./dsh/executor.json (--template minimal|dogfood)
   doctor    read-only checks over policy/executor/env/db — exit 0 clean · 1 warnings · 2 failures
   health    read-only体检: stage counts, oldest stuck ages, effect backlog (watchdog's eyes)

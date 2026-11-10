@@ -83,7 +83,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "stats", "routines", "init", "doctor", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "stats", "routines", "events", "init", "doctor", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -490,6 +490,23 @@ try {
     if (binder) {
       engine.kvSet("wechat_binder", binder);
       console.log(`[wechat] scanner identity captured (${binder}) — consider adding it to allowedList so their DMs are explicit`);
+    }
+  } else if (command === "events") {
+    // v1.5 evidence ledger: events tail [n] | events verify
+    const sub = positionals[1] ?? "tail";
+    if (sub === "verify") {
+      const v = engine.ledger.verify();
+      console.log(v.ok
+        ? `ledger OK — ${v.count} events, chain intact`
+        : `LEDGER BROKEN at event #${v.firstBadId} (${v.reason}); ${v.count} events scanned`);
+      process.exit(v.ok ? 0 : 2);
+    }
+    const n = positionals[2] !== undefined ? Number(positionals[2]) : 50;
+    const rows = engine.ledger.eventsAfter(0, Math.min(Math.max(n, 1), 500));
+    if (rows.length === 0) console.log("(no events yet — the ledger starts when the engine does)");
+    for (const e of rows) {
+      const detail = Object.entries(e.payload as Record<string, unknown>).slice(0, 4).map(([k, v2]) => `${k}=${String(v2)}`).join(" ");
+      console.log(`#${e.id} ${e.ts.slice(5, 19)} ${e.kind}${detail ? "  " + detail : ""}`);
     }
   } else if (command === "routines") {
     // v1.2: the clock's config surface — list / validate / fire. No --repo needed.

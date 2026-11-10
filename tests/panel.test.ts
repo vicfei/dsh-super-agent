@@ -251,3 +251,22 @@ describe("v1.3 slice 3: audit depth", () => {
     expect(Array.isArray(rows)).toBe(true);
   });
 });
+
+describe("evidence stream endpoints (v1.5 slice B)", () => {
+  it("GET /api/events serves cursor semantics; /api/events/verify reports the chain", async () => {
+    engine.ingest([item("github:issue:1")]);
+    const a1 = engine.startAssignment(1, "/w");
+    engine.endAssignment(a1, 0, false, "ok");
+    const res = await fetch(base + "/api/events?limit=3");
+    expect(res.status).toBe(200);
+    const page1 = (await res.json()) as { events: { id: number; kind: string }[]; lastId: number };
+    expect(page1.events.length).toBe(3);
+    expect(page1.events[0].id).toBeLessThan(page1.events[1].id);
+    const res2 = await fetch(base + `/api/events?after=${page1.lastId}`);
+    const rest = (await res2.json()) as { events: { id: number }[]; lastId: number };
+    expect(rest.events.every((e) => e.id > page1.lastId)).toBe(true);
+    const v = (await (await fetch(base + "/api/events/verify")).json()) as { ok: boolean; count: number };
+    expect(v.ok).toBe(true);
+    expect(v.count).toBe(page1.events.length + rest.events.length);
+  });
+});

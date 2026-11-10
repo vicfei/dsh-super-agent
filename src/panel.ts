@@ -98,6 +98,20 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       send(200, "text/html; charset=utf-8", PAGE);
       return;
     }
+    // v1.5 slice B: the evidence stream — cursor read + on-demand chain verification.
+    if (req.method === "GET" && url.pathname === "/api/events") {
+      const after = Number(url.searchParams.get("after") ?? 0) || 0;
+      const limit = Math.min(Number(url.searchParams.get("limit") ?? 50) || 50, 200);
+      const events = engine.ledger.eventsAfter(after, limit);
+      const lastId = events.length > 0 ? events[events.length - 1].id : after;
+      send(200, "application/json", JSON.stringify({ events, lastId }));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/events/verify") {
+      const v = engine.ledger.verify();
+      send(200, "application/json", JSON.stringify(v));
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/state") {
       const policy = engine.policy() ?? NO_POLICY;
       const positions = engine.sourceState("timer").positions;

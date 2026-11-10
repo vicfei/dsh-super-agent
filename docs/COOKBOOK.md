@@ -165,3 +165,18 @@ engine.ingest([], { github: next }); // positions land, triggers are dropped
 (Found live: booting a second watch on a busy repo flooded 19 tickets for long-closed
 issues — fixed in #113 so the first collect returns numeric positions, but "history is
 fresh" is semantics, not a bug.)
+
+## 8. Subscribing to the evidence stream
+
+Every engine transition is appended to a **hash-chained ledger** (`dsh events tail`, `dsh
+events verify` — verify recomputes the chain and names the first edited row; a kv head
+anchor catches truncated tails). Boards and bots can follow the canonical stream instead
+of scraping HTML:
+
+```bash
+curl -s localhost:8787/api/events?after=$CURSOR | jq .   # { events: [...], lastId }
+curl -s localhost:8787/api/events/verify | jq .          # { ok: true, count: N }
+```
+
+Cursor semantics: pass the last `id` you saw as `after`; you get the next page oldest-first.
+The panel's Evidence section renders the same stream with a live chain-integrity chip.

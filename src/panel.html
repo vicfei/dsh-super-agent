@@ -67,6 +67,10 @@
 <h2>Routines — the clock</h2>
 <div id="routines"></div>
 
+<h2>Evidence — the ledger</h2>
+<div id="ledgerVerify" class="quiet"></div>
+<div id="ledger"></div>
+
 <h2>Memory — the durable tier</h2>
 <div id="memory"></div>
 
@@ -86,6 +90,10 @@
 <footer>healthy state takes no space — empty sections mean nothing needs you</footer>
 
 <script>
+async function verifyNow() {
+  const v = await (await fetch('/api/events/verify')).json();
+  alert(v.ok ? `chain intact — ${v.count} events` : `BROKEN at #${v.firstBadId}: ${v.reason}`);
+}
 const fmt = t => new Date(t).toISOString().replace('T',' ').slice(5,19);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const threadShort = t => t.replace(/^github:[^\/]+\//, '');
@@ -159,6 +167,22 @@ async function render() {
     ? '<div class="quiet">no approval requests waiting</div>'
     : aps.map(a => `<div class="card"><span class="badge b-person">${esc(a.kind)}</span>
         ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ops thread · since ${fmt(a.createdAt)}</div>`).join('');
+
+  try {
+    const ev = await api('/api/events?limit=25');
+    const rows = (ev.events || []).slice().reverse();
+    document.getElementById('ledger').innerHTML = rows.length === 0
+      ? '<div class="quiet">no events yet — the ledger starts with the engine</div>'
+      : rows.map(e => {
+          const d = Object.entries(e.payload || {}).slice(0, 3).map(([k, v2]) => `${esc(k)}=${esc(String(v2))}`).join(' ');
+          return `<div class="card"><span class="quiet">#${e.id} ${esc(e.ts.slice(5, 19))}</span> <b>${esc(e.kind)}</b> <span class="quiet">${d}</span></div>`;
+        }).join('');
+    const ver = await api('/api/events/verify');
+    const el = document.getElementById('ledgerVerify');
+    el.innerHTML = ver.ok
+      ? `<span class="badge b-accept">chain intact</span> <span class="quiet">${ver.count} events · hash-chained · <a href="#" onclick="verifyNow();return false">re-verify</a></span>`
+      : `<span class="badge b-ignore">CHAIN BROKEN</span> <span class="quiet">${esc(ver.reason)} (event #${ver.firstBadId})</span>`;
+  } catch { /* ledger section is best-effort */ }
 
   const mem = s.memory || { counts: {}, recent: [] };
   const memTotal = (mem.counts.accepted || 0) + (mem.counts.candidate || 0);

@@ -68,12 +68,14 @@ describe("chain integrity", () => {
     expect(v.ok).toBe(false);
   });
 
-  it("a deleted tail is visible: counts and ids are contiguous", () => {
+  it("a truncated tail is caught by the head anchor (slice B)", () => {
     engine.ingest([accept()], { github: { positions: { issue: 1 } } });
     engine.db.prepare("DELETE FROM event_log WHERE id = (SELECT MAX(id) FROM event_log)").run();
-    // deletion of the LAST row cannot be detected by hashing alone (chain truncation) —
-    // documented boundary; what the chain guarantees is integrity of what remains.
-    expect(engine.ledger.verify().ok).toBe(true);
+    // hashing alone cannot see a missing TAIL (a shorter valid chain remains) — the kv
+    // head anchor is ahead of the last row and verify fails.
+    const v = engine.ledger.verify();
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.reason).toContain("truncated");
   });
 });
 

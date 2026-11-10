@@ -41,6 +41,10 @@ const MAX_BACKOFF_MS = 10 * 60 * 1000;
 
 export async function runWatch(opts: WatchOptions): Promise<void> {
   const log = opts.log ?? ((l: string) => console.log(l));
+  // v1.5.1: a daemon boot is itself a state transition — without this row, a fresh
+  // ledger stays empty until the first ticket/decision and restarts are invisible
+  // to the evidence chain (live finding 2026-11-10: three engines, 0 ledger rows).
+  opts.engine.ledger.emit("engine.boot", { pid: process.pid, policyVersion: opts.policy.version, acceptMode: opts.policy.acceptMode });
   const base = opts.intervalMs ?? 30_000;
   let stopped = false;
   const stop = () => { stopped = true; };

@@ -181,3 +181,16 @@ describe("runWatch", () => {
     expect(engine.openDeliveries("o/r")).toHaveLength(1);
   });
 });
+
+describe("engine.boot ledger event (v1.5.1)", () => {
+  it("runWatch emits exactly one engine.boot as the ledger's first row; the chain verifies", async () => {
+    await runWatch({ engine, executor: echoExecutor(), client: null, channels: [], repo: "o/r", policy, assessment: async () => "positive", sources: [fakeSource(["empty"])], cycles: 1 });
+    const events = engine.ledger.eventsAfter(0, 100);
+    const boots = events.filter((e) => e.kind === "engine.boot");
+    expect(boots).toHaveLength(1); // one per runWatch call, never per cycle
+    expect(events.slice(0, events.indexOf(boots[0])).every((e) => e.kind === "policy.version")).toBe(true); // at most policy adoption precedes it
+    expect((boots[0].payload as Record<string, unknown>).policyVersion).toBe(1);
+    expect((boots[0].payload as Record<string, unknown>).acceptMode).toBe("auto");
+    expect(engine.ledger.verify().ok).toBe(true);
+  });
+});

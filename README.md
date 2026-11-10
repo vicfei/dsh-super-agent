@@ -110,6 +110,8 @@ Every famous concept from *Super-agent: Design Explorations*, and where it lives
 | §4 Async ReAct, duplex | subprocess workers with env contracts, group-kill timeout, outbox replies | v0.3+ |
 | §5 BYOM, state/env split | any OpenAI-compatible endpoint; SQLite state, worktree environments | v0.3 |
 | §6 Watchdog | observes and nudges — never admits, never kills; `health` CLI | v0.9 |
+| Evidence ledger + stream | every transition appended to a **hash-chained ledger** — `dsh events verify` proves the audit trail was never edited; `/api/events` is the canonical subscriber stream; the panel draws the live topology | v1.5 |
+| Evidence ledger + stream | every transition appended to a **hash-chained ledger** — `dsh events verify` proves the audit trail was never edited; `/api/events` is the canonical subscriber stream; the panel draws the live topology | v1.5 |
 | Authorization model (docs/002) | the core: admission tables, explicit/inferred, observe→auto, mandates & revalidation | v0.0.1→ |
 
 **Where we sit in the ecosystem**: IM gateways ([dsh-im](https://github.com/xmanrui/dsh-im), [dsh-wechat](https://github.com/xcisxc29/dsh-wechat)) bring chat *to a DSH session* — a remote control for a human-driven agent. This repo is the other thing: an **admission-controlled autonomous worker** — messages pass a gate, work happens in worktrees, delivery passes approval-gated auto-merge. Different layer, composable in spirit.

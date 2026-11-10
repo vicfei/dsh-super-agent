@@ -270,3 +270,12 @@ describe("evidence stream endpoints (v1.5 slice B)", () => {
     expect(v.count).toBe(page1.events.length + rest.events.length);
   });
 });
+
+describe("topology state (v1.5 slice C)", () => {
+  it("/api/state lists armed sources and lifetime gate verdicts", async () => {
+    engine.ingest([item("github:issue:1")], { github: { positions: { issue: 1 } } });
+    const st = (await (await fetch(base + "/api/state")).json()) as { sources: string[]; gateStats: { accept: number; ignore: number; wouldAccept: number } };
+    expect(st.sources).toContain("github");
+    expect(st.gateStats.accept).toBeGreaterThanOrEqual(1);
+  });
+});

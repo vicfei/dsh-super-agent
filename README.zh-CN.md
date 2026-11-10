@@ -106,6 +106,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | §4 异步 ReAct、双工 | 子进程 worker + 环境变量契约、进程组超时、outbox 回帖 | v0.3+ |
 | §5 BYOM、状态/环境分离 | 任意 OpenAI 兼容端点;SQLite 状态、worktree 环境 | v0.3 |
 | §6 Watchdog | 只观察只提醒——永不碰准入、永不杀任务;`health` CLI | v0.9 |
+| 证据账本 + 事件流 | 每个状态转换追加进**哈希链账本**——`dsh events verify` 证明审计轨迹从未被事后修改;`/api/events` 是规范的订阅流;面板绘制实时拓扑 | v1.5 |
 | 授权模型(docs/002) | 核心:准许表、explicit/inferred、observe→auto、Mandate 与重验 | v0.0.1→ |
 
 **我们在生态里的位置**:IM 网关([dsh-im](https://github.com/xmanrui/dsh-im)、[dsh-wechat](https://github.com/xcisxc29/dsh-wechat))把聊天*接进 DSH 会话*——人驱动 agent 的遥控器。本仓库是另一种东西:**带准入控制的自主工人**——消息过门禁,工作在 worktree 里发生,交付过审批自动合并。不同层,精神上可组合。

@@ -38,6 +38,14 @@
   .ic { display: inline-block; width: 16px; text-align: center; margin-right: 6px; font-weight: bold; }
   .ic.ok { color: #3fb950; } .ic.warn { color: #e3b341; } .ic.fail { color: #f85149; } .ic.info { color: #8b949e; }
   footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
+.tp-node rect{fill:#161b22;stroke:#30363d}
+.tp-node text{fill:#c9d1d9}
+.tp-node .tp-t{font-size:13px;font-weight:600}
+.tp-node .tp-s{font-size:10px;fill:#8b949e}
+.tp-hot rect{stroke:#f0883e}
+.tp-edge{stroke:#30363d;stroke-width:1.5}
+.tp-flow{stroke:#f0883e;stroke-dasharray:6 4;animation:tp-dash 1.2s linear infinite}
+@keyframes tp-dash{to{stroke-dashoffset:-10}}
 </style>
 </head>
 <body>
@@ -57,6 +65,9 @@
 
 <h2>Awaiting a human</h2>
 <div id="awaiting"></div>
+
+<h2>Topology — the machine at a glance</h2>
+<div id="topology"></div>
 
 <h2>By person</h2>
 <div id="persons"></div>
@@ -167,6 +178,33 @@ async function render() {
     ? '<div class="quiet">no approval requests waiting</div>'
     : aps.map(a => `<div class="card"><span class="badge b-person">${esc(a.kind)}</span>
         ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ops thread · since ${fmt(a.createdAt)}</div>`).join('');
+
+  // v1.5 slice C — live topology, hand-rolled SVG (zero deps, like everything here)
+  try {
+    const srcs = s.sources || [];
+    const g = s.gateStats || { accept: 0, ignore: 0, wouldAccept: 0 };
+    const h = s.health || { tickets: {}, effects: {} };
+    const tk = h.tickets || {};
+    const nodeY = 110;
+    const box = (x, label, sub, hot) =>
+      `<g transform="translate(${x}, ${nodeY})" class="tp-node${hot ? ' tp-hot' : ''}">
+         <rect x="-8" y="-26" width="112" height="52" rx="8"></rect>
+         <text x="48" y="-4" text-anchor="middle" class="tp-t">${esc(label)}</text>
+         <text x="48" y="14" text-anchor="middle" class="tp-s">${esc(sub)}</text></g>`;
+    const srcNodes = (srcs.slice(0, 6).length ? srcs.slice(0, 6) : ['(none)']).map((n, i) =>
+      box(58 + (i % 3) * 118, n, 'source', false)).join('');
+    const gate = box(430, 'gate', `${g.accept + g.wouldAccept + g.ignore} decided`, g.wouldAccept > 0);
+    const tickets = box(570, 'tickets', `q${tk.queued ?? 0} · w${tk.working ?? 0} · 🔑${tk['needs-person'] ?? 0}`, (tk['needs-person'] ?? 0) > 0);
+    const worker = box(700, 'worker', (tk.working ?? 0) > 0 ? 'running' : 'idle', (tk.working ?? 0) > 0);
+    const outbox = box(830, 'outbox', `${h.pendingEffects ?? 0} pending`, (h.pendingEffects ?? 0) > 0);
+    const arrow = (x1, x2) => `<line x1="${x1}" y1="${nodeY}" x2="${x2}" y2="${nodeY}" class="tp-edge${(tk.working ?? 0) > 0 ? ' tp-flow' : ''}"></line>`;
+    document.getElementById('topology').innerHTML =
+      `<svg viewBox="0 0 950 220" style="width:100%;max-width:950px" xmlns="http://www.w3.org/2000/svg">
+         ${arrow(480, 562)}${arrow(620, 692)}${arrow(750, 822)}
+         ${srcNodes}${gate}${tickets}${worker}${outbox}
+         <text x="475" y="205" text-anchor="middle" class="tp-s">armed sources → admission gate → tickets by stage → the worker → the outbox — would-accept ${g.wouldAccept}, failed effects ${h.failedEffects ?? 0}</text>
+       </svg>`;
+  } catch { /* topology is best-effort */ }
 
   try {
     const ev = await api('/api/events?limit=25');

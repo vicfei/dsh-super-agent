@@ -168,3 +168,26 @@ describe("PR title hygiene (live finding, harness-native PR #4)", () => {
     expect(createdPRs[0].title).toBe("Ticket #1: Three defects:");
   });
 });
+
+describe("delivery hygiene (v1.5.1)", () => {
+  it("execution artifacts (DSH_PROMPT.md, .dsh, node_modules) are stripped before the push — the PR carries only the work", async () => {
+    engine.ingest([acceptItem(3)]);
+    const exec = executorWith(
+      `ln -s /tmp "$DSH_DIR/node_modules" && mkdir -p "$DSH_DIR/.dsh" && echo x > "$DSH_DIR/.dsh/state" && echo the-feature > "$DSH_DIR/feature.txt" ` +
+      `&& git -C "$DSH_DIR" add -A && git -C "$DSH_DIR" -c user.email=w@w -c user.name=worker commit -qm "change per ticket" && echo done`,
+    );
+    const reports = await runWork(engine, exec, "o/r", client);
+
+    expect(reports[0]).toMatchObject({ outcome: "done", detail: "exit 0 · PR opened" });
+    const files = execSync(`git -C ${JSON.stringify(originGit)} ls-tree -r --name-only dsh/ticket-1`).toString().trim().split("\n");
+    expect(files).toContain("feature.txt");
+    expect(files.some((f) => f === "node_modules" || f.startsWith("node_modules/"))).toBe(false);
+    expect(files.some((f) => f === "DSH_PROMPT.md" || f.startsWith(".dsh/"))).toBe(false);
+    // the strip itself is visible in history — auditable, not silent
+    const stripMsg = execSync(`git -C ${JSON.stringify(originGit)} log --format=%s dsh/ticket-1`).toString();
+    expect(stripMsg).toContain("chore(dsh): strip execution artifacts from delivery");
+    // recorded headSha matches what was actually pushed
+    const tipSha = execSync(`git -C ${JSON.stringify(originGit)} rev-parse dsh/ticket-1`).toString().trim();
+    expect(engine.openDeliveries("o/r")[0].headSha).toBe(tipSha);
+  });
+});

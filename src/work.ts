@@ -113,6 +113,19 @@ export async function deliverPullRequest(
   try {
     const count = Number(await git(result.worktree, ["rev-list", "--count", `${result.baseSha}..HEAD`]));
     if (count === 0) return {}; // nothing to deliver
+    // Delivery hygiene (live finding 2026-11-10, dogfood ticket #75: a worker's node_modules
+    // symlink rode into the deliverable commit): the executor itself writes DSH_PROMPT.md and
+    // .dsh/ into the worktree, and BYOM workers stage their own conveniences (node_modules
+    // symlink, PATH shims). None of that is the ticket's work — strip it from the deliverable
+    // range so the PR contains only the work.
+    const STRIPPED_PATHS = ["DSH_PROMPT.md", ".dsh", "node_modules"];
+    const changedPaths = (await git(result.worktree, ["diff", "--name-only", `${result.baseSha}..HEAD`]))
+      .split("\n").map((l) => l.trim()).filter(Boolean);
+    const offenders = changedPaths.filter((p) => STRIPPED_PATHS.some((s) => p === s || p.startsWith(`${s}/`)));
+    if (offenders.length > 0) {
+      await git(result.worktree, ["rm", "-r", "-q", "--ignore-unmatch", ...offenders]);
+      await git(result.worktree, ["-c", "user.name=dsh-delivery", "-c", "user.email=dsh@localhost", "commit", "-q", "-m", "chore(dsh): strip execution artifacts from delivery"]);
+    }
     const branch = `dsh/ticket-${ticket.id}`;
     const headSha = await git(result.worktree, ["rev-parse", "HEAD"]);
     await git(result.worktree, [...pushAuthArgs(await client.currentToken()), "push", "origin", `HEAD:refs/heads/${branch}`]);

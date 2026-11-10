@@ -141,6 +141,13 @@ startup error and a `dsh doctor` failure — never a silent unsandboxed fallback
 - **Telegram/Feishu/Slack**: one token each (`TELEGRAM_BOT_TOKEN`, …) — the channel arms
   itself when the env is present.
 
+## 6½. Reply language
+
+Every human-facing message (ticket notices, reports, approval asks and receipts, watchdog
+check-ins) ships in English and Chinese: set `DSH_LOCALE=zh` in the daemon's environment.
+The gate, decisions and audit trail stay English — they are evidence, not conversation.
+`DSH_LOCALE` unset = English (the only behavior before this knob existed).
+
 ## 7. The daemon, and bootstrapping an existing repo
 
 `dsh watch` is poll → gate → work → report → drain, forever, with backoff. Run it under

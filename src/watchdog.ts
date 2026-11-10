@@ -7,6 +7,7 @@
 
 import type { Policy } from "./domain.js";
 import type { Engine } from "./engine.js";
+import { watchdogCheckIn, watchdogReminder } from "./locale.js";
 import type { ReplyChannel } from "./source.js";
 import { drainReplyEffects } from "./work.js";
 
@@ -79,7 +80,7 @@ export async function runWatchdogSweep(
     }
     if (nudge) {
       engine.enqueueReply(key, a.threadId,
-        `Ticket #${a.ticketId} has been running for ${Math.round(ageMs / 60000)} minutes — checking in. If it finishes, the report lands here; a person can stop it anytime. This is by an automated agent, not a human.`);
+        watchdogCheckIn(a.ticketId, Math.round(ageMs / 60000)));
       out.push({ subject: `ticket #${a.ticketId}`, action: "nudge", detail: `assignment ${a.assignmentId} running ${Math.round(ageMs / 60000)}min` });
     }
   }
@@ -90,7 +91,7 @@ export async function runWatchdogSweep(
     const key = `watchdog-remind:${t.ticketId}`;
     if (alreadyPosted(key)) continue;
     engine.enqueueReply(key, t.threadId,
-      `Ticket #${t.ticketId} is still waiting for a person (${Math.round(ageMs / 3_600_000)}h). This is the only reminder. This is by an automated agent, not a human.`);
+      watchdogReminder(t.ticketId, Math.round(ageMs / 3_600_000)));
     out.push({ subject: `ticket #${t.ticketId}`, action: "remind", detail: `needs-person for ${Math.round(ageMs / 3_600_000)}h` });
   }
 

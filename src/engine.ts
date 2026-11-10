@@ -11,11 +11,14 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { clipReply } from "./clip.js";
 import type { Policy, Strength, Trigger } from "./domain.js";
+import { EventLedger } from "./ledger.js";
 import { ticketNotice } from "./locale.js";
 import type { GateResult, Resolution } from "./gate.js";
 import type { SourceState } from "./source.js";
 
 const SCHEMA = `
+-- (the evidence ledger's own schema lives in ledger.ts; created with the engine)
+
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS trigger (
@@ -226,6 +229,7 @@ export class Engine {
     this.db.pragma("foreign_keys = ON");
     this.db.pragma("busy_timeout = 5000"); // panel's quick writes alongside poll
     this.db.exec(SCHEMA);
+    this.ledger = new EventLedger(this.db);
   }
 
   close(): void {
@@ -235,12 +239,16 @@ export class Engine {
   // ── policy (kv) ──────────────────────────────────────────────────────────
 
   /** Store the current Policy if its version differs — open Tickets keep their mandate. */
+  /** v1.5: append-only hash-chained evidence for every transition below. */
+  ledger: EventLedger;
+
   setPolicyIfChanged(policy: Policy): boolean {
     const row = this.db.prepare("SELECT v FROM kv WHERE k = 'policy'").get() as { v: string } | undefined;
     if (row && (JSON.parse(row.v) as Policy).version === policy.version) return false;
     this.db
       .prepare("INSERT INTO kv (k, v) VALUES ('policy', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v")
       .run(JSON.stringify(policy));
+    this.ledger.emit("policy.version", { version: policy.version });
     return true;
   }
 
@@ -251,6 +259,7 @@ export class Engine {
     if (current.acceptMode === mode) return current;
     const next: Policy = { ...current, acceptMode: mode, version: current.version + 1 };
     this.setPolicyIfChanged(next);
+    this.ledger.emit("policy.mode", { mode, version: next.version });
     return next;
   }
 
@@ -348,6 +357,7 @@ export class Engine {
         const wouldAccept = item.resolution.action === "shadow" ? 1 : 0;
         const basis = "basis" in item.resolution ? item.resolution.basis : item.gate.basis;
         insertDecision.run(t.id, kind, strength, basis, wouldAccept, policyVersion, now);
+        this.ledger.emit("decision.recorded", { trigger: t.id, kind, strength, wouldAccept: wouldAccept === 1, basis });
 
         if (item.resolution.action === "shadow" && speculationEnabled(policy)) {
           // v1.0 speculative execution: a positive inferred candidate in observe mode may
@@ -358,6 +368,7 @@ export class Engine {
           if (Number(open.c) < speculationCap(policy)) {
             const info = insertTicket.run(t.threadId, t.id, t.author.login, "inferred", policyVersion, basis, now, now);
             this.db.prepare("UPDATE ticket SET speculative = 1 WHERE id = ?").run(Number(info.lastInsertRowid));
+            this.ledger.emit("ticket.opened", { ticketId: Number(info.lastInsertRowid), threadId: t.threadId, opener: t.author.login, strength: "inferred", speculative: true });
             report.speculative++;
           }
         }
@@ -378,12 +389,14 @@ export class Engine {
             if (anyOpen) {
               this.db.prepare("INSERT INTO ticket_followup (ticket_id, trigger_id, ts) VALUES (?, ?, ?)").run(anyOpen.id, t.id, now);
               this.db.prepare("UPDATE ticket SET updated_at = ? WHERE id = ?").run(now, anyOpen.id);
+              this.ledger.emit("ticket.followup", { ticketId: anyOpen.id, trigger: t.id, by: "timer" });
               report.joined++;
               continue;
             }
             // the clock never resumes ended tickets — each fire is new work (v1.2 design note)
             const info = insertTicket.run(t.threadId, t.id, t.author.login, strength, policyVersion, basis, now, now);
             const ticketId = Number(info.lastInsertRowid);
+            this.ledger.emit("ticket.opened", { ticketId, threadId: t.threadId, opener: t.author.login, strength, speculative: false });
             report.ticketsOpened++;
             enqueue.run("reply", `ticket-open:${ticketId}`, JSON.stringify(replyPayload(t, ticketId, "opened", strength as Strength)), now, now, now);
             continue;
@@ -391,6 +404,7 @@ export class Engine {
           if (open) {
             this.db.prepare("INSERT INTO ticket_followup (ticket_id, trigger_id, ts) VALUES (?, ?, ?)").run(open.id, t.id, now);
             this.db.prepare("UPDATE ticket SET updated_at = ? WHERE id = ?").run(now, open.id);
+            this.ledger.emit("ticket.followup", { ticketId: open.id, trigger: t.id, by: t.author.login });
             report.joined++;
             continue;
           }
@@ -411,6 +425,7 @@ export class Engine {
             const failReason = this.revalidateFailReason(ended, policy, t.author.login);
             if (failReason) {
               this.db.prepare("UPDATE ticket SET revoked_reason = ?, updated_at = ? WHERE id = ?").run(failReason, now, ended.id);
+              this.ledger.emit("ticket.revoked", { ticketId: Number(ended.id), reason: failReason });
               report.refusals.push(`ticket #${ended.id} stays ended — ${failReason}`);
             } else {
               this.db
@@ -419,6 +434,7 @@ export class Engine {
               // The resuming message is context too (v0.7-1): without this, the re-claim would
               // only ever show the worker the original request.
               this.db.prepare("INSERT INTO ticket_followup (ticket_id, trigger_id, ts) VALUES (?, ?, ?)").run(ended.id, t.id, now);
+              this.ledger.emit("ticket.resumed", { ticketId: Number(ended.id), trigger: t.id, by: t.author.login });
               report.resumed++;
               enqueue.run("reply", `ticket-resume:${ended.id}:${Number(ended.resumed_count) + 1}`,
                 JSON.stringify(replyPayload(t, Number(ended.id), "resumed", ended.strength as Strength)), now, now, now);
@@ -428,6 +444,7 @@ export class Engine {
           } else {
             const info = insertTicket.run(t.threadId, t.id, t.author.login, strength, policyVersion, basis, now, now);
             const ticketId = Number(info.lastInsertRowid);
+            this.ledger.emit("ticket.opened", { ticketId, threadId: t.threadId, opener: t.author.login, strength, speculative: false });
             report.ticketsOpened++;
             enqueue.run("reply", `ticket-open:${ticketId}`, JSON.stringify(replyPayload(t, ticketId, "opened", strength as Strength)), now, now, now);
           }
@@ -491,6 +508,7 @@ export class Engine {
     const info = this.db
       .prepare("INSERT INTO approval_request (ops_thread, ticket_id, kind, created_at) VALUES (?, ?, ?, ?)")
       .run(opsThread, ticketId, kind, ts);
+    this.ledger.emit("approval.rendered", { ticketId, kind, opsThread: opsThread.split(":")[0] });
     return Number(info.lastInsertRowid);
   }
 
@@ -522,6 +540,7 @@ export class Engine {
     const r = this.db
       .prepare(`UPDATE ticket SET requeued_at = ?, updated_at = ? WHERE id = ? AND state = 'open'`)
       .run(new Date().toISOString(), new Date().toISOString(), id);
+    if (r.changes > 0) this.ledger.emit("ticket.requeued", { ticketId: id });
     return r.changes > 0;
   }
 
@@ -549,6 +568,7 @@ export class Engine {
     const r = this.db
       .prepare("UPDATE ticket SET speculative = 0, promoted_at = ?, updated_at = ? WHERE id = ? AND speculative = 1")
       .run(now, now, id);
+    if (r.changes > 0) this.ledger.emit("ticket.promoted", { ticketId: id, by: byLogin });
     void byLogin;
     return r.changes > 0;
   }
@@ -577,6 +597,7 @@ export class Engine {
     const r = this.db
       .prepare("UPDATE ticket SET state = 'ended', stopped_by = ?, stopped_at = ?, updated_at = ? WHERE id = ? AND state = 'open'")
       .run(byLogin, now, now, id);
+    if (r.changes > 0) this.ledger.emit("ticket.stopped", { ticketId: id, by: byLogin });
     return r.changes > 0;
   }
 
@@ -641,13 +662,16 @@ export class Engine {
     const r = this.db
       .prepare("INSERT INTO assignment (ticket_id, worktree, started_at) VALUES (?, ?, ?)")
       .run(ticketId, worktree, new Date().toISOString());
-    return Number(r.lastInsertRowid);
+    const id = Number(r.lastInsertRowid);
+    this.ledger.emit("assignment.started", { assignmentId: id, ticketId });
+    return id;
   }
 
   endAssignment(id: number, exitCode: number | null, timedOut: boolean, output: string): void {
     this.db
       .prepare("UPDATE assignment SET state = 'ended', exit_code = ?, timed_out = ?, output = ?, ended_at = ? WHERE id = ?")
       .run(exitCode, timedOut ? 1 : 0, output.slice(0, 65536), new Date().toISOString(), id);
+    this.ledger.emit("assignment.ended", { assignmentId: id, exitCode, timedOut });
   }
 
   /** A ready report ends the Ticket completed (stopped_by stays NULL ⇒ new work opens a new ticket). */
@@ -655,6 +679,7 @@ export class Engine {
     const r = this.db
       .prepare("UPDATE ticket SET state = 'ended', updated_at = ? WHERE id = ? AND state = 'open'")
       .run(new Date().toISOString(), id);
+    if (r.changes > 0) this.ledger.emit("ticket.ended", { ticketId: id });
     return r.changes > 0;
   }
 
@@ -666,6 +691,7 @@ export class Engine {
       ON CONFLICT(kind, key) DO UPDATE SET payload = excluded.payload, status = 'pending',
         attempts = 0, next_due_at = excluded.next_due_at, last_error = NULL, updated_at = excluded.updated_at`)
       .run(key, JSON.stringify({ threadId, body }), now, now, now);
+    this.ledger.emit("effect.enqueued", { key });
   }
 
   // ── deliveries (M6-1: PRs the agent opened — the auto-merge sweep's work list) ──
@@ -811,6 +837,7 @@ export class Engine {
 
   completeEffect(id: number): void {
     this.db.prepare("UPDATE effect SET status = 'done', updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
+    this.ledger.emit("effect.delivered", { effectId: id });
   }
 
   /** Retryable failures back off exponentially (5s→300s cap); the 5th failure is terminal. */
@@ -822,11 +849,13 @@ export class Engine {
     if (!retryable || attempts >= MAX_EFFECT_ATTEMPTS) {
       this.db.prepare("UPDATE effect SET status = 'failed', attempts = ?, last_error = ?, updated_at = ? WHERE id = ?")
         .run(attempts, error, now.toISOString(), id);
+      this.ledger.emit("effect.failed", { effectId: id, attempts, terminal: true, error: error.slice(0, 200) });
       return;
     }
     const delay = Math.min(BACKOFF_BASE_MS * 2 ** attempts, BACKOFF_CAP_MS);
     this.db.prepare("UPDATE effect SET attempts = ?, next_due_at = ?, last_error = ?, updated_at = ? WHERE id = ?")
       .run(attempts, new Date(now.getTime() + delay).toISOString(), error, now.toISOString(), id);
+    this.ledger.emit("effect.failed", { effectId: id, attempts, terminal: false, error: error.slice(0, 200) });
   }
 
   // ── two-tier memory (v1.4, issue #110) — the durable tier, engine-DB only ──
@@ -847,6 +876,7 @@ export class Engine {
       insert.run(input.repo, body.trim(), input.autoAccept ? "accepted" : "candidate", input.ticketId, now, now);
     }
     if (input.autoAccept) this.pruneMemories(input.repo, input.maxAccepted);
+    this.ledger.emit("memory.recorded", { ticketId: input.ticketId, repo: input.repo, count: bodies.length, accepted: input.autoAccept });
     return bodies.length;
   }
 

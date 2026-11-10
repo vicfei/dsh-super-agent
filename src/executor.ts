@@ -242,5 +242,16 @@ export function renderPrompt(ticket: { id: number; threadId: string }, trigger: 
     "- To ask the owner for permission (something blocked here, an outward action), write title / reason /",
     "  requested action to the file at $DSH_APPROVAL_FILE and stop — the owner decides from chat;",
     "  nothing you write can flip a gate by itself.",
+    "",
+    "## Scope — carry through or stop, by impact",
+    "",
+    "- Carry an authorized local change through implementation, checks and review to completion.",
+    "  File counts, failing tests or layout defects alone are NOT reasons to stop — fix and validate them.",
+    "- Pause (via $DSH_APPROVAL_FILE) when the scope requires breaking existing caller expectations,",
+    "  changing a module's responsibility, or coordinated redesign across modules — or when feasible",
+    "  approaches repeatedly fail. Name the specific interface and caller impact, or the missing",
+    "  prerequisite; do not stop for effort reasons alone.",
+    "- Preserve useful partial work as an explicitly incomplete draft; report what is blocked and why.",
+    "  Never fabricate a PR when no useful safe change exists.",
   ].join("\n");
 }

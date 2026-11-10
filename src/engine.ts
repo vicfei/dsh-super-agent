@@ -11,6 +11,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { clipReply } from "./clip.js";
 import type { Policy, Strength, Trigger } from "./domain.js";
+import { ticketNotice } from "./locale.js";
 import type { GateResult, Resolution } from "./gate.js";
 import type { SourceState } from "./source.js";
 
@@ -907,6 +908,6 @@ function replyPayload(t: Trigger, ticketId: number, verb: "opened" | "resumed", 
   return {
     threadId: t.threadId,
     issueNumber: n ? Number(n[2]) : null,
-    body: clipReply(`Ticket #${ticketId} ${verb} (${strength}). This is by an automated agent, not a human.`),
+    body: clipReply(ticketNotice(ticketId, verb, strength)),
   };
 }

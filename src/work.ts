@@ -9,6 +9,7 @@ import type { Engine, SpillFile } from "./engine.js";
 import { Executor, type ExecutorResult } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
 import type { MemoryDistiller } from "./memory.js";
+import { couldNotRun, disclaimer, promoted as promotedMsg, reportHeader, workerAsked } from "./locale.js";
 import type { ReplyChannel } from "./source.js";
 import { spawn } from "node:child_process";
 
@@ -131,7 +132,7 @@ export async function deliverPullRequest(
       head: branch,
       base,
       body: [
-        `This is by an automated agent, not a human.`,
+        disclaimer(),
         ``,
         `Ticket #${ticket.id} — opened by @${trigger.author} in ${ticket.threadId}.`,
         ``,
@@ -175,7 +176,7 @@ export async function runWork(
       const detail = e instanceof Error ? e.message : String(e);
       engine.endAssignment(assignmentId, null, false, detail);
       engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId,
-        clipReply(`Ticket #${t.id} could not run: ${detail}. Awaiting a person. This is by an automated agent, not a human.`, 150));
+        clipReply(couldNotRun(t.id, detail), 150));
       reports.push({ ticketId: t.id, assignmentId, outcome: "refused", detail });
       continue;
     }
@@ -189,7 +190,7 @@ export async function runWork(
       engine.endAssignment(assignmentId, ok ? null : result.exitCode, result.timedOut, result.output);
       engine.recordWorkerRequest(t.id, request.content);
       engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId,
-        clipReply(`Ticket #${t.id}: the worker asked for a person.\n\n${request.content}\n\nThis is by an automated agent, not a human.`, 150));
+        clipReply(workerAsked(t.id, request.content), 150));
       reports.push({ ticketId: t.id, assignmentId, outcome: "failed", detail: "worker requested a person (approval file)" });
       continue;
     }
@@ -261,7 +262,7 @@ function reportBody(ticketId: number, r: ExecutorResult): string {
   const tail = r.output.trim().slice(-400);
   const excerpt = tail ? `\n\n\`\`\`\n${tail}\n\`\`\`` : "";
   return clipReply(
-    `Ticket #${ticketId} ${failed ? "failed" : "done"} (${status}).${failed ? " Awaiting a person." : ""} This is by an automated agent, not a human.${excerpt}`,
+    reportHeader(ticketId, failed, status) + excerpt,
     150,
   );
 }
@@ -301,7 +302,7 @@ export async function runPromoteSweep(
           branch: delivery.branch!, headSha: delivery.headSha!,
         });
         engine.enqueueReply(`promote-report:${t.id}`, t.threadId,
-          clipReply(`Promoted speculative ticket #${t.id} — the rehearsed work is now up for review: ${delivery.prUrl}. This is by an automated agent, not a human.`, 150));
+          clipReply(promotedMsg(t.id, delivery.prUrl ?? "(pr url unavailable)"), 150));
         delivered++;
         log(`#${t.id} delivered after promote → ${delivery.prUrl}`);
       }

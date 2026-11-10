@@ -5,6 +5,7 @@
 // expiry, newest-wins single pending, receipts for every applied action.
 
 import type { Policy, Trigger } from "./domain.js";
+import { approvalNeeded, receiptNothingPending, receiptPromoted, receiptRequeued, receiptStopped, rehearsalReady } from "./locale.js";
 import type { Engine } from "./engine.js";
 import type { ReplyChannel } from "./source.js";
 import { drainReplyEffects } from "./work.js";
@@ -70,7 +71,7 @@ function excerpt(engine: Engine, ticketId: number): string {
 export function applyApproval(engine: Engine, opsThread: string, digit: 1 | 2 | 3, now: Date = new Date()): string {
   const req = engine.pendingApproval(opsThread);
   if (!req) {
-    engine.enqueueReply(`approval-none:${now.getTime()}`, opsThread, "Nothing pending — no approval request is waiting for a number.");
+    engine.enqueueReply(`approval-none:${now.getTime()}`, opsThread, receiptNothingPending());
     return "nothing-pending";
   }
   if (now.getTime() - Date.parse(req.createdAt) > EXPIRY_MS) {
@@ -98,7 +99,7 @@ export function applyApproval(engine: Engine, opsThread: string, digit: 1 | 2 | 
     engine.resolveApproval(req.id);
     const stopped = engine.stopTicket(req.ticketId, "im-approval");
     engine.enqueueReply(`approval-receipt:${req.id}`, opsThread, stopped
-      ? `⛔ Ticket #${req.ticketId} stopped (by your confirmed 2).`
+      ? receiptStopped(req.ticketId)
       : `Ticket #${req.ticketId} was no longer open — nothing stopped.`);
     return stopped ? `stop:${req.ticketId}` : `stop-noop:${req.ticketId}`;
   }
@@ -108,7 +109,7 @@ export function applyApproval(engine: Engine, opsThread: string, digit: 1 | 2 | 
   if (req.kind === "speculative") {
     const ok = engine.promoteTicket(req.ticketId, "im-approval");
     engine.enqueueReply(`approval-receipt:${req.id}`, opsThread, ok
-      ? `✅ Ticket #${req.ticketId} promoted — the rehearsed work will be pushed and a PR opened.`
+      ? receiptPromoted(req.ticketId)
       : `Ticket #${req.ticketId} was no longer speculative — nothing promoted.`);
     return ok ? `promote:${req.ticketId}` : `promote-noop:${req.ticketId}`;
   }
@@ -119,7 +120,7 @@ export function applyApproval(engine: Engine, opsThread: string, digit: 1 | 2 | 
     if (request) engine.setTicketNote(req.ticketId, `The owner approved your earlier request:\n${request}`);
   }
   engine.enqueueReply(`approval-receipt:${req.id}`, opsThread, ok
-    ? `✅ Ticket #${req.ticketId} requeued — the worker will take another run and report here.`
+    ? receiptRequeued(req.ticketId)
     : `Ticket #${req.ticketId} was not awaiting a person — nothing requeued.`);
   return ok ? `requeue:${req.ticketId}` : `requeue-noop:${req.ticketId}`;
 }
@@ -200,7 +201,7 @@ const renderedOnce = (ticketId: number, assignmentId: number): boolean =>
     if (!thread) continue;
     engine.openApprovalRequest(thread, t.id, "needs-person");
     engine.enqueueReply(`approval-req:${t.id}:${aid}`, thread,
-      `🔑 [approval needed] Ticket #${t.id} is waiting for a person.\n${ticketLine(engine, t.id)}\n1 requeue (run again) · 2 stop · 3 detail\n(reply with just the number)`);
+      approvalNeeded(t.id, ticketLine(engine, t.id)));
     rendered++;
     log(`approval request rendered: #${t.id} → ${thread.split(":")[0]} ops thread`);
   }
@@ -214,7 +215,7 @@ const renderedOnce = (ticketId: number, assignmentId: number): boolean =>
     if (!thread) continue;
     engine.openApprovalRequest(thread, t.id, "speculative");
     engine.enqueueReply(`approval-req:${t.id}:${aid}`, thread,
-      `🧪 [rehearsal ready] Ticket #${t.id} was silently rehearsed and awaits the deliver gate.\n${ticketLine(engine, t.id)}\n1 promote (push + PR) · 2 discard · 3 detail\n(reply with just the number)`);
+      rehearsalReady(t.id, ticketLine(engine, t.id)));
     rendered++;
     log(`promote request rendered: #${t.id} → ${thread.split(":")[0]} ops thread`);
   }

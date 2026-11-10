@@ -62,6 +62,15 @@ Any command line counts as a Worker. Per-ticket worktree, per-ticket environment
 
 Bring your own model for the assessment layer: any OpenAI-compatible `/chat/completions` endpoint works.
 
+## Real-world use cases
+
+All four run live today on the maintainer's fleet — none is hypothetical:
+
+1. **Observe-first autonomy.** Point the daemon at a repo you own and let it run in `observe` mode: every would-have-accepted decision is recorded as shadow evidence with its policy version. When the evidence looks clean, flip scopes to `auto` one tier at a time. The maintainer's own upgrade path is public: 238 recorded decisions audited, the false positives traced to old policy versions (since fixed), current-policy shadows 6/6 true positives.
+2. **A personal fleet across machines.** Home WSL2, a Shanghai VM and a Singapore server each run agents; approvals arrive on the owner's phone over WeChat with one-digit replies (`1` approve / `2` stop / `3` detail), and a morning digest is one cron line. Restarting any node is safe: tickets, decisions and evidence live in a local SQLite engine DB, not in a chat scroll.
+3. **A contribution bot for your own repos.** In `auto` mode with the merge gate on, the engine has delivered real merged PRs on two repos (deepseek-bot #109, harness-native #4): worktree-isolated executor, red-gated worker that refuses to deliver on failing tests, PR title hygiene, and the hash-chained ledger as the audit trail.
+4. **A scheduled report engine.** A fourth instance runs in `auto` with PR-only delivery: routines pull git-native task/session logs from a fleet of agent windows and open a daily/weekly/monthly report as a pull request for human review — the engine drafts, the owner merges.
+
 ## Status
 
 Every row below is wired, offline-tested (290 tests), and running on this repo's own dogfood daemon:

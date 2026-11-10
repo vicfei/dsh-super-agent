@@ -48,6 +48,9 @@ export interface PanelState {
   memory: ReturnType<Engine["memoryView"]>;
   /** v1.3 slice 2: the doctor's checks, embedded (offline facts only; cached server-side). Null when not wired. */
   doctor: DoctorReport | null;
+  /** v1.5 slice C: the machine at a glance — armed sources and lifetime gate verdicts. */
+  sources: string[];
+  gateStats: { accept: number; ignore: number; wouldAccept: number };
 }
 
 /** The full, untruncated trigger behind a decision row — the audit depth (v1.3 slice 3). */
@@ -134,6 +137,13 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
         health: healthReport(engine),
         routines: { enabled: routinesEnabled(policy), items },
         memory: engine.memoryView(),
+        sources: (engine.db.prepare("SELECT k FROM kv WHERE k LIKE 'positions:%' ORDER BY k").all() as { k: string }[])
+          .map((r) => r.k.replace("positions:", "")),
+        gateStats: (() => {
+          const rows = engine.db.prepare("SELECT kind, would_accept, COUNT(*) c FROM decision GROUP BY kind, would_accept").all() as { kind: string; would_accept: number; c: number }[];
+          const get = (kind: string, wa: number) => Number(rows.find((r) => r.kind === kind && r.would_accept === wa)?.c ?? 0);
+          return { accept: get("accept", 0), ignore: get("ignore", 0), wouldAccept: get("ignore", 1) };
+        })(),
         doctor: await doctorNow(),
       };
       send(200, "application/json", JSON.stringify(state));

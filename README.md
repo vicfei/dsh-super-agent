@@ -224,6 +224,7 @@ The distinction is levels: inside the DSH plugin ecosystem, 25+ plugins guard in
 
 - [dsh-weknora-ops](https://github.com/vicfei/dsh-weknora-ops) — the WeKnora write path with the same philosophy: trust is structural, not persuaded
 - [dsh-plugin-atlas](https://github.com/vicfei/dsh-plugin-atlas) — a live, daily-refreshed map of the whole DSH plugin ecosystem
+- [deepseek-bot](https://github.com/vicfei/deepseek-bot) — a personal agent runtime guarded end-to-end by a hash-chained ledger and a constitution layer: this project guards coding agents at the gate, that one guards a personal agent over months of runtime
 
 ## Design credits
 

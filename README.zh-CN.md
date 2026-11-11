@@ -243,3 +243,4 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 
 - [dsh-weknora-ops](https://github.com/vicfei/dsh-weknora-ops) —— WeKnora 写入路径,同一哲学:信任是结构性的,不是劝出来的
 - [dsh-plugin-atlas](https://github.com/vicfei/dsh-plugin-atlas) —— 整个 DSH 插件生态的活地图,每日刷新
+- [deepseek-bot](https://github.com/vicfei/deepseek-bot) —— 个人智能体运行时,全程由哈希链账本与宪法层守护:本项目守编码智能体的入口闸门,它守个人智能体数月的运行时

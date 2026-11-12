@@ -158,6 +158,30 @@ two-tier memory design exists to remove.
       `source_ticket` provenance; the panel shows counts + recent rows.
 - [x] Default off (`policy.memory.enabled`), like every autonomous capability here.
 
+## Milestone 15 — the evidence ledger (done, v1.5.0)
+
+- [x] Hash-chained `event_log`; `dsh events tail | verify` (#122)
+- [x] Subscribable evidence stream: cursor endpoint + panel head anchor (#123)
+- [x] Zero-dependency topology SVG (#124)
+- [x] Follow-ups: `engine.boot` on every daemon start; delivery hygiene strips
+      execution artifacts before the push (#126/#127)
+
+## v1.6 candidates (unscheduled — 2026-11 fleet retrospective + ecosystem survey)
+
+- Approval-surface channel symmetry: any channel that carries triggers can carry digit
+  approvals (GitHub threads as ops threads; `setOpsRoute` is dead code today).
+- `dsh review`: longitudinal trust from ledger data — per-thread/per-agent would-accept
+  accuracy over time. The "Month-3 review" made computable.
+- Report/routine promote semantics: reportTo tickets deliver a message, not push+PR.
+- Daemon lifecycle UX: pidfile, graceful port handover, `dsh restart` — the restart
+  ritual is design debt.
+- DSH-plugin form: a governance plugin for the official DSH ecosystem (community hub
+  dsh-plugin.org indexes 24k+ plugins). **Revisits the v0 non-goal below** — not
+  subordination: the daemon stays an independent implementation; the plugin is a
+  distribution bridge.
+- Carried from the article's design: prompt override system, subscription lifecycle
+  completion, few-settings rescan.
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)
@@ -168,4 +192,4 @@ two-tier memory design exists to remove.
 
 - Multi-instance / distributed operation
 - Cross-source identity mapping
-- Being a DSH plugin
+- ~~Being a DSH plugin~~ (v0 non-goal — revisited 2026-11: a plugin-form *distribution bridge* is a v1.6 candidate; the daemon itself stays independent)

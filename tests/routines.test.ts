@@ -399,3 +399,28 @@ describe("catch-up slot cap (live finding 2026-11-07: daily→hourly switch arme
     expect(nextRoutineFire(daily, threeDaysStale, now)).toBe(Date.parse("2026-11-05T08:00:00Z")); // first missed — unchanged semantics
   });
 });
+
+describe("first-enable grace (issue #132)", () => {
+  const weekly = { id: "w", prompt: "p", schedule: { cron: "0 9 * * 5", tz: "UTC" }, reportTo: "github:o/r/issues/1" } as never;
+  const DAY = 86_400_000;
+  // Friday 2026-11-13 09:00:00Z — the slot the live incident missed by 20 seconds.
+  const slot = Date.UTC(2026, 10, 13, 9, 0, 0);
+
+  it("a slot passed within the grace window is honored exactly once at first enable", () => {
+    const sweepAt = slot + 20_000; // 20s after the slot, like the live poll
+    const next = nextRoutineFire(weekly, undefined, sweepAt);
+    expect(new Date(next).toISOString()).toBe("2026-11-13T09:00:00.000Z");
+  });
+
+  it("first enable far from any slot still arms the NEXT slot (no backlog replay)", () => {
+    const monday = Date.UTC(2026, 10, 16, 12, 0, 0); // Sunday mid-day, far from Friday 09:00
+    const next = nextRoutineFire(weekly, undefined, monday);
+    expect(new Date(next).toISOString()).toBe("2026-11-20T09:00:00.000Z");
+  });
+
+  it("grace never resurrects a slot older than one minute", () => {
+    const late = slot + 5 * 60_000; // five minutes late — grace (1min) must not cover it
+    const next = nextRoutineFire(weekly, undefined, late);
+    expect(new Date(next).toISOString()).toBe("2026-11-20T09:00:00.000Z");
+  });
+});

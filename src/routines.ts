@@ -253,9 +253,18 @@ export function routineIntervalMs(schedule: RoutineDefinition["schedule"]): numb
   throw new Error("`every` needs minutes or hours");
 }
 
+/** How far back a FIRST-ENABLE routine still honors a just-passed slot. The sweep poll
+ * (15–30s typical) can land seconds after a slot; anchoring strictly at `now` made the
+ * just-passed slot ineligible forever ("strictly after now" jumps a whole period) — live
+ * finding 2026-11-13, fleet-reports: a weekly `0 9 * * 5` missed Friday 09:00:00Z by 20s
+ * and silently skipped a full week. One minute of grace covers poll intervals up to 60s
+ * while still replaying no backlog. */
+const ROUTINE_FIRST_ENABLE_GRACE_MS = 60_000;
+
 /**
  * The next slot this routine should honor, given its last honored slot.
- * - last undefined (first enable): start from now — no backlog replay on day one;
+ * - last undefined (first enable): start from one grace interval back — a slot that
+ *   just passed within the poll window is honored exactly once; nothing older replays;
  * - last stale: catch up from the oldest missed slot, dropping anything beyond the
  *   slot cap (live finding 2026-11-07: switching a routine from daily to hourly with a
  *   week-old `last` armed ~168 backlogged slots, and busy cycles drain them at sweep
@@ -268,7 +277,7 @@ export function nextRoutineFire(d: RoutineDefinition, lastMs: number | undefined
     d.schedule.cron !== undefined
       ? Math.max(60_000, Math.round(86_400_000 / (parseCron(d.schedule.cron).hours.length * parseCron(d.schedule.cron).minutes.length)))
       : routineIntervalMs(d.schedule);
-  const from = lastMs === undefined ? now : Math.max(lastMs, now - ROUTINE_CATCHUP_SLOTS * intervalMs);
+  const from = lastMs === undefined ? now - ROUTINE_FIRST_ENABLE_GRACE_MS : Math.max(lastMs, now - ROUTINE_CATCHUP_SLOTS * intervalMs);
   if (d.schedule.cron !== undefined) {
     return nextCronMatch(from, parseCron(d.schedule.cron), d.schedule.tz ?? localTz());
   }

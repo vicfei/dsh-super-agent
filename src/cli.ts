@@ -83,7 +83,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "stats", "routines", "events", "init", "doctor", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "stats", "review", "routines", "events", "init", "doctor", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -572,6 +572,13 @@ try {
     const { runStats, formatStats } = await import("./stats.js");
     const since = positionals[1] === "--since" ? positionals[2] : positionals[1] && !positionals[1].startsWith("-") ? positionals[1] : undefined;
     console.log(formatStats(runStats(engine, since ? { sinceIso: new Date(since).toISOString() } : {})));
+  } else if (command === "review") {
+    // v1.6: the computable promotion review — longitudinal trust from the decision log.
+    const { reviewReport, formatReview } = await import("./review.js");
+    const since = positionals[1] === "--since" ? positionals[2] : positionals[1] && !positionals[1].startsWith("-") ? positionals[1] : undefined;
+    const scopeIdx = positionals.indexOf("--scope");
+    const scope = scopeIdx >= 0 ? positionals[scopeIdx + 1] : undefined;
+    console.log(formatReview(reviewReport(engine, since ? { sinceIso: new Date(since).toISOString(), ...(scope ? { scope } : {}) } : scope ? { scope } : {})));
   } else if (command === "health") {
     // Watchdog's read-only体检 (v0.9-1): no writes, no replies — safe at any time.
     const { healthReport } = await import("./watchdog.js");

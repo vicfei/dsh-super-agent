@@ -182,6 +182,15 @@ two-tier memory design exists to remove.
 - Carried from the article's design: prompt override system, subscription lifecycle
   completion, few-settings rescan.
 
+## Milestone 16 — the earned-autonomy release (done, v1.6.0)
+
+- [x] `dsh review`: computable promotion review, era-aware (#135/#139)
+- [x] Per-scope rungs + the grant write path, ledger-evidenced (#141)
+- [x] Trust console: promotion desk, live stream, ledger timeline (#139/#140)
+- [x] Routines first-enable grace (#132/#134)
+- [x] Ops routes reachable from any channel (`dsh ops`, /api/ops)
+- [x] BYO-judge design page (#133; implementation v1.7 candidate)
+
 ## Later (from the article's design, deliberately after the slice)
 
 - Subscription bypass for ticket-bearing threads (fan-out without re-eval)

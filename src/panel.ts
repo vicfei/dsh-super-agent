@@ -110,6 +110,12 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       send(200, "application/json", JSON.stringify({ events, lastId }));
       return;
     }
+    // v1.6 trust console slice 1: the promotion desk reads dsh review verbatim.
+    if (req.method === "GET" && url.pathname === "/api/review") {
+      const { reviewReport } = await import("./review.js");
+      send(200, "application/json", JSON.stringify(reviewReport(engine, {})));
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/events/verify") {
       const v = engine.ledger.verify();
       send(200, "application/json", JSON.stringify(v));

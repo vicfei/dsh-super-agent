@@ -23,6 +23,8 @@ export interface ScopeEvidence {
   assessorNegatives: number;
   /** distinct threads behind the shadows — breadth, not one noisy thread. */
   threads: number;
+  /** shadows recorded under the CURRENT policy version — old-era shadows don't earn rungs. */
+  shadowsCurrent: number;
   firstTs: string | null;
   lastTs: string | null;
   /** auto-candidate | hold | insufficient — a heuristic, the human decides. */
@@ -43,15 +45,17 @@ export interface ThreadFocus {
 
 export interface ReviewReport {
   window: { since: string | null; until: string; scope: string | null };
+  /** the policy version this engine currently runs — the era suggestions count from. */
+  currentVersion: number | null;
   overview: { decisions: number; shadows: number; autoAccepts: number; negatives: number };
   byScope: ScopeEvidence[];
   byPolicyVersion: PolicyEra[];
   topThreads: ThreadFocus[];
 }
 
-function suggest(shadows: number, negatives: number, threads: number): ScopeEvidence["suggestion"] {
+function suggest(shadowsCurrent: number, negatives: number, threads: number): ScopeEvidence["suggestion"] {
   if (negatives > 0) return "hold";
-  if (shadows >= 10 && threads >= 3) return "auto-candidate";
+  if (shadowsCurrent >= 10 && threads >= 3) return "auto-candidate";
   return "insufficient";
 }
 
@@ -67,9 +71,14 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
            SUM(d.basis LIKE '%assessed negative%') negatives
     FROM decision d JOIN trigger t ON t.id=d.trigger_id WHERE 1=1 ${since} ${scope}`);
 
+  const currentVersion = (engine.db.prepare("SELECT v FROM kv WHERE k = 'policy'").get() as { v: string } | undefined)
+    ? (JSON.parse((engine.db.prepare("SELECT v FROM kv WHERE k = 'policy'").get() as { v: string }).v) as { version: number }).version
+    : null;
+
   const scopeRows = engine.db.prepare(`
     SELECT t.scope, 
            SUM(d.kind='ignore' AND d.would_accept=1) shadows,
+           SUM(d.kind='ignore' AND d.would_accept=1 AND d.policy_version = ${currentVersion ?? -1}) shadowsCurrent,
            SUM(d.kind='accept' AND d.strength='inferred') autoAccepts,
            SUM(d.basis LIKE '%assessed negative%') negatives,
            COUNT(DISTINCT CASE WHEN d.would_accept=1 THEN t.thread_id END) threads,
@@ -79,15 +88,17 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
 
   const byScope: ScopeEvidence[] = scopeRows.map((r) => {
     const shadows = Number(r.shadows ?? 0), negatives = Number(r.negatives ?? 0), threads = Number(r.threads ?? 0);
+    const shadowsCurrent = Number(r.shadowsCurrent ?? 0);
     return {
       scope: String(r.scope),
       shadows,
+      shadowsCurrent,
       autoAccepts: Number(r.autoAccepts ?? 0),
       assessorNegatives: negatives,
       threads,
       firstTs: r.firstTs ? String(r.firstTs) : null,
       lastTs: r.lastTs ? String(r.lastTs) : null,
-      suggestion: suggest(shadows, negatives, threads),
+      suggestion: suggest(shadowsCurrent, negatives, threads),
     };
   });
 
@@ -104,6 +115,7 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
     .map((r) => ({ threadId: String(r.thread_id), wouldAccept: Number(r.wa), lastTs: String(r.lastTs) }));
 
   return {
+    currentVersion,
     window: { since: opts.sinceIso ?? null, until: new Date().toISOString(), scope: opts.scope ?? null },
     overview: { decisions: Number(overview.decisions ?? 0), shadows: Number(overview.shadows ?? 0), autoAccepts: Number(overview.autoAccepts ?? 0), negatives: Number(overview.negatives ?? 0) },
     byScope, byPolicyVersion, topThreads,
@@ -118,10 +130,11 @@ export function formatReview(r: ReviewReport): string {
   L.push(`overview: ${r.overview.decisions} decisions · ${r.overview.shadows} shadows (would-accept) · ${r.overview.autoAccepts} auto-accepts · ${r.overview.negatives} assessor rejections`);
   L.push(``);
   L.push(`## scope evidence (the ladder rungs)`);
-  L.push(`| scope | shadows | threads | auto-accepts | rejections | span | suggestion |`);
+  L.push(`| scope | shadows (current era) | threads | auto-accepts | rejections | span | suggestion |`);
   L.push(`|---|---|---|---|---|---|---|`);
   for (const s of r.byScope) {
-    L.push(`| ${s.scope} | ${s.shadows} | ${s.threads} | ${s.autoAccepts} | ${s.assessorNegatives} | ${s.firstTs?.slice(0, 10) ?? "—"}→${s.lastTs?.slice(0, 10) ?? "—"} | **${s.suggestion}** |`);
+    const sc = s.shadows === s.shadowsCurrent ? `${s.shadows}` : `${s.shadows} (${s.shadowsCurrent} under v${r.currentVersion ?? "?"})`;
+    L.push(`| ${s.scope} | ${sc} | ${s.threads} | ${s.autoAccepts} | ${s.assessorNegatives} | ${s.firstTs?.slice(0, 10) ?? "—"}→${s.lastTs?.slice(0, 10) ?? "—"} | **${s.suggestion}** |`);
   }
   L.push(``);
   L.push(`## policy eras (admission learning, one row per version)`);

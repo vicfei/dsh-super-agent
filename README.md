@@ -213,10 +213,14 @@ And the panel (`npm run panel`, localhost — the v1.3 dashboard) shows only wha
 | | dispatch to CLI agents | worktrees | admission table | observe mode | host-enforced authz | IM approval digits | routines through the gate | one-command onboarding |
 |---|---|---|---|---|---|---|---|---|
 | Baton / Emdash / Agent Orchestrator / Claude Squad / … | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| [Paseo](https://github.com/getpaseo/paseo) — the cockpit (desktop + mobile) | ✅ | ✅ | ❌ | ❌ | ❌ (daemon ACL is cockpit access) | ❌ | ❌ | ✅ |
+| [LoopForge](https://github.com/Tencent/LoopForge) — SOP delivery (Tencent) | ✅ | ✅ (sandboxes) | ❌ | ❌ | ❌ (human gates are workflow interrupts) | ❌ (own-UI gates) | ❌ | ✅ |
 | dsh-superagent-prototype (official, DSH-only) | DSH sessions | ✅ | ✅ | ✅ | ✅ | ❌ (their open gap) | ✅ (11-04 — but no cron / per-routine tz / catch-up: their own gap doc) | ❌ |
 | **dsh-super-agent** (this repo) | any CLI | ✅ | ✅ | ✅ | ✅ | ✅ v1.1 | ✅ v1.2 | ✅ v1.2 |
 
 *(Category row per the [Aug 2026 roundup](https://www.augmentcode.com/tools/open-source-agent-orchestrators); individual tools evolve — check their repos.)*
+
+Two recent heavyweights, for orientation: **Paseo** is the cockpit — drive many agents from desktop and mobile; **LoopForge** is the SOP floor — repeatable delivery with human gates in chat. Both are the power axis; neither gates *who may start work*, keeps a tamper-evident evidence chain, or grants autonomy rung by rung.
 
 The distinction is levels: inside the DSH plugin ecosystem, 25+ plugins guard individual **tool calls** within a session — none gates **who may start work** at the ticket level.
 

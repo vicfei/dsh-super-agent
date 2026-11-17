@@ -1,6 +1,6 @@
 # dsh-super-agent
 
-[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@vicfei/dsh-super-agent?registry=https%3A%2F%2Fregistry.npmjs.org&color=blue)](https://www.npmjs.com/package/@vicfei/dsh-super-agent) [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![tests](https://img.shields.io/badge/tests-356-brightgreen)](.)
 
 **Admission control, observe mode & tickets for any CLI coding agent.**
 
@@ -9,6 +9,10 @@ An independent, executor-agnostic implementation of the [DeepSeek Super-agent](h
 > ⚠️ **Independent community project — not affiliated with DeepSeek or the `deepseek-ai` organization.** The design is taken from the public article [*Super-agent: Design Explorations*](https://mp.weixin.qq.com/s/zoS7GlReWPhfCjENGxXCdg) (DeepSeek 产品部) and the MIT-licensed [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype) docs. No DeepSeek Harness, no DeepSeek model required. Full credits in [Design credits](#design-credits).
 
 [中文文档](README.zh-CN.md)
+
+<p align="center">
+  <img src="docs/trust-ladder.svg" alt="The trust ladder — off → observe → auto; agents earn autonomy rung by rung over a hash-chained evidence ledger" width="880">
+</p>
 
 <p align="center">
   <img src="docs/banner.png" alt="dsh-super-agent — admission control, observe mode and tickets for any CLI coding agent" width="880">

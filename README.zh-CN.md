@@ -214,10 +214,14 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 | | 派活给 CLI 智能体 | worktree | 准许表 | 观察模式 | 宿主强制授权 | IM 审批数字 | 走准许表的 routines | 一条命令上手 |
 |---|---|---|---|---|---|---|---|---|
 | Baton / Emdash / Agent Orchestrator / Claude Squad / … | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| [Paseo](https://github.com/getpaseo/paseo) —— 驾驶舱(桌面+移动) | ✅ | ✅ | ❌ | ❌ | ❌(daemon 权限=驾驶舱门禁) | ❌ | ❌ | ✅ |
+| [LoopForge](https://github.com/Tencent/LoopForge) —— SOP 交付(腾讯) | ✅ | ✅(沙箱) | ❌ | ❌ | ❌(人工闸门=流程中断点) | ❌(自家 UI 闸门) | ❌ | ✅ |
 | dsh-superagent-prototype(官方,仅 DSH) | DSH 会话 | ✅ | ✅ | ✅ | ✅ | ❌(其自认缺口) | ✅(11-04——但无 cron / 逐 routine 时区 / 补跑:其 gap 文档自述) | ❌ |
 | **dsh-super-agent**(本仓库) | 任意 CLI | ✅ | ✅ | ✅ | ✅ | ✅ v1.1 | ✅ v1.2 | ✅ v1.2 |
 
 *(品类一行依据[2026 年 8 月盘点](https://www.augmentcode.com/tools/open-source-agent-orchestrators);各工具在演进,以各自仓库为准。)*
+
+两个近期重量级选手,供定位参考:**Paseo** 是驾驶舱——在桌面和移动端驾驶多个 agent;**LoopForge** 是 SOP 流水线——带人工闸门的可复用交付。两者都在力量轴线上;都不治理*谁配开工*、不留防篡改证据链、不逐档授予自主。
 
 ## 设计致谢
 

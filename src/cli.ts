@@ -83,7 +83,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "stats", "review", "routines", "events", "init", "doctor", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "stats", "review", "routines", "events", "ops", "ops", "init", "doctor", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -508,6 +508,15 @@ try {
       const detail = Object.entries(e.payload as Record<string, unknown>).slice(0, 4).map(([k, v2]) => `${k}=${String(v2)}`).join(" ");
       console.log(`#${e.id} ${e.ts.slice(5, 19)} ${e.kind}${detail ? "  " + detail : ""}`);
     }
+  } else if (command === "ops") {
+    // v1.6: register an ops route explicitly — GitHub threads deserve the digit surface too
+    // (live finding 2026-11-10: ops threads registered only via IM DM; setOpsRoute was dead code).
+    const [login, thread] = positionals.slice(1);
+    if (!login || !thread || !/^[a-z0-9][a-z0-9-]*$/.test(login) || !/:/.test(thread)) {
+      die(`usage: dsh ops <login> <thread-id>   e.g. dsh ops vicfei github:vicfei/reports/issues/1${WITH_HELP}`);
+    }
+    engine.registerOpsThread(login, thread);
+    console.log(`ops route registered: ${login} → ${thread} (digit replies and "?" now work on that thread)`);
   } else if (command === "routines") {
     // v1.2: the clock's config surface — list / validate / fire. No --repo needed.
     const sub = positionals[1] ?? "list";

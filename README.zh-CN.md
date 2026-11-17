@@ -1,6 +1,6 @@
 # dsh-super-agent
 
-[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@vicfei/dsh-super-agent?registry=https%3A%2F%2Fregistry.npmjs.org&color=blue)](https://www.npmjs.com/package/@vicfei/dsh-super-agent) [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![tests](https://img.shields.io/badge/tests-356-brightgreen)](.)
 
 **给任意 CLI 编码智能体的准入控制、观察模式与工单编排。**
 
@@ -9,6 +9,10 @@
 > ⚠️ **独立社区项目——与 DeepSeek 及 `deepseek-ai` 组织无关。** 设计取自公开文章[《Super-agent 设计探索:迈向更自主的 Agent 系统》](https://mp.weixin.qq.com/s/zoS7GlReWPhfCjENGxXCdg)(DeepSeek 产品部)与 MIT 协议的 [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype) 文档。不依赖 DeepSeek Harness,不依赖 DeepSeek 模型。完整致谢见[设计致谢](#设计致谢)。
 
 [English README](README.md)
+
+<p align="center">
+  <img src="docs/trust-ladder.svg" alt="信任阶梯——off → observe → auto;agent 用可验证的证据逐档赢得自主" width="880">
+</p>
 
 <p align="center">
   <img src="docs/banner.png" alt="dsh-super-agent — 给任意 CLI 编码智能体的准入控制、观察模式与工单编排" width="880">

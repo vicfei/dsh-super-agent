@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="300" viewBox="0 0 1080 300" role="img" aria-label="The trust ladder: off, observe, auto — agents earn autonomy rung by rung, evidenced by a hash-chained ledger">
+  <defs>
+    <linearGradient id="rail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#30363d"/><stop offset="1" stop-color="#2f81f7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="300" rx="14" fill="#0d1117"/>
+  <text x="40" y="52" fill="#e6edf3" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="26" font-weight="700">The trust ladder</text>
+  <text x="40" y="78" fill="#8b949e" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="15">agents earn autonomy — rung by rung, on evidence you can verify</text>
+
+  <!-- rung 1: OFF -->
+  <rect x="40" y="200" width="280" height="56" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="64" y="224" fill="#8b949e" font-family="sans-serif" font-size="17" font-weight="700">OFF</text>
+  <text x="64" y="244" fill="#6e7681" font-family="sans-serif" font-size="12">inferred strength has no effect</text>
+
+  <!-- rung 2: OBSERVE -->
+  <rect x="360" y="150" width="280" height="106" rx="8" fill="#161b22" stroke="#d29922"/>
+  <circle cx="76" cy="172" r="5" fill="#d29922"/>
+  <text x="92" y="177" fill="#e3b341" font-family="sans-serif" font-size="17" font-weight="700">OBSERVE</text>
+  <text x="384" y="202" fill="#8b949e" font-family="sans-serif" font-size="12">shadow decisions recorded —</text>
+  <text x="384" y="218" fill="#8b949e" font-family="sans-serif" font-size="12">would-accept evidence piles up,</text>
+  <text x="384" y="234" fill="#8b949e" font-family="sans-serif" font-size="12">nothing runs</text>
+
+  <!-- rung 3: AUTO -->
+  <rect x="680" y="100" width="280" height="156" rx="8" fill="#161b22" stroke="#2f81f7"/>
+  <text x="704" y="128" fill="#58a6ff" font-family="sans-serif" font-size="17" font-weight="700">AUTO</text>
+  <text x="704" y="152" fill="#8b949e" font-family="sans-serif" font-size="12">inferred candidates become tickets;</text>
+  <text x="704" y="168" fill="#8b949e" font-family="sans-serif" font-size="12">merge still needs a person;</text>
+  <text x="704" y="184" fill="#8b949e" font-family="sans-serif" font-size="12">one digit on your phone</text>
+  <text x="704" y="206" fill="#2f81f7" font-family="sans-serif" font-size="12" font-weight="700">granted per scope, by policy</text>
+  <text x="704" y="224" fill="#2f81f7" font-family="sans-serif" font-size="12" font-weight="700">version-bumped, never silent</text>
+
+  <!-- arrows between rungs -->
+  <path d="M322 228 h30" stroke="#30363d" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M642 203 h30" stroke="#2f81f7" stroke-width="2" marker-end="url(#b)"/>
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#30363d"/></marker>
+    <marker id="b" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#2f81f7"/></marker>
+  </defs>
+
+  <!-- evidence rail -->
+  <rect x="40" y="268" width="920" height="14" rx="7" fill="url(#rail)"/>
+  <text x="976" y="279" fill="#8b949e" font-family="sans-serif" font-size="12">hash-chained ledger</text>
+  <g fill="#0d1117">
+    <rect x="200" y="270" width="4" height="10"/><rect x="380" y="270" width="4" height="10"/><rect x="560" y="270" width="4" height="10"/><rect x="740" y="270" width="4" height="10"/>
+  </g>
+</svg>

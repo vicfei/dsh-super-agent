@@ -25,6 +25,8 @@ export interface ScopeEvidence {
   threads: number;
   /** shadows recorded under the CURRENT policy version — old-era shadows don't earn rungs. */
   shadowsCurrent: number;
+  /** this scope already holds a per-scope auto rung (policy row override). */
+  autoGranted: boolean;
   firstTs: string | null;
   lastTs: string | null;
   /** auto-candidate | hold | insufficient — a heuristic, the human decides. */
@@ -51,6 +53,11 @@ export interface ReviewReport {
   byScope: ScopeEvidence[];
   byPolicyVersion: PolicyEra[];
   topThreads: ThreadFocus[];
+}
+
+function currentPolicyRows(engine: Engine): unknown {
+  const row = engine.db.prepare("SELECT v FROM kv WHERE k = 'policy'").get() as { v: string } | undefined;
+  return row ? (JSON.parse(row.v) as { table?: unknown }).table : undefined;
 }
 
 function suggest(shadowsCurrent: number, negatives: number, threads: number): ScopeEvidence["suggestion"] {
@@ -86,6 +93,11 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
     FROM decision d JOIN trigger t ON t.id=d.trigger_id WHERE 1=1 ${since} ${scope}
     GROUP BY t.scope ORDER BY shadows + autoAccepts DESC`).all() as Record<string, unknown>[];
 
+  const grantedScopes = new Set(
+    ((currentPolicyRows(engine) ?? []) as { scope: string; acceptMode?: string }[])
+      .filter((row) => row.acceptMode === "auto")
+      .map((row) => row.scope),
+  );
   const byScope: ScopeEvidence[] = scopeRows.map((r) => {
     const shadows = Number(r.shadows ?? 0), negatives = Number(r.negatives ?? 0), threads = Number(r.threads ?? 0);
     const shadowsCurrent = Number(r.shadowsCurrent ?? 0);
@@ -99,6 +111,7 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
       firstTs: r.firstTs ? String(r.firstTs) : null,
       lastTs: r.lastTs ? String(r.lastTs) : null,
       suggestion: suggest(shadowsCurrent, negatives, threads),
+      autoGranted: grantedScopes.has(String(r.scope)),
     };
   });
 
@@ -134,7 +147,8 @@ export function formatReview(r: ReviewReport): string {
   L.push(`|---|---|---|---|---|---|---|`);
   for (const s of r.byScope) {
     const sc = s.shadows === s.shadowsCurrent ? `${s.shadows}` : `${s.shadows} (${s.shadowsCurrent} under v${r.currentVersion ?? "?"})`;
-    L.push(`| ${s.scope} | ${sc} | ${s.threads} | ${s.autoAccepts} | ${s.assessorNegatives} | ${s.firstTs?.slice(0, 10) ?? "—"}→${s.lastTs?.slice(0, 10) ?? "—"} | **${s.suggestion}** |`);
+    const mark = s.autoGranted ? "🟢 GRANTED " : "";
+    L.push(`| ${s.scope} | ${sc} | ${s.threads} | ${s.autoAccepts} | ${s.assessorNegatives} | ${s.firstTs?.slice(0, 10) ?? "—"}→${s.lastTs?.slice(0, 10) ?? "—"} | ${mark}**${s.suggestion}** |`);
   }
   L.push(``);
   L.push(`## policy eras (admission learning, one row per version)`);

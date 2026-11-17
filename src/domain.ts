@@ -57,6 +57,9 @@ export type AcceptMode = "off" | "observe" | "auto";
 export type Cell = "inferred" | "ignore";
 
 export interface AdmissionRow {
+  /** v1.6 rungs: per-scope override of the engine's acceptMode for inferred candidates.
+   *  Absent = follow the global mode. Granted from the review desk, always version-bumped. */
+  acceptMode?: "off" | "observe" | "auto";
   scope: Scope;
   listedNotAddressing: Cell;
   unlistedAddressing: Cell;

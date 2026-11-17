@@ -252,6 +252,25 @@ describe("v1.3 slice 3: audit depth", () => {
   });
 });
 
+describe("trust console slice 4 — the grant write path (v1.6)", () => {
+  it("POST /api/grant bumps the policy, flips the row, lands a policy.rung ledger row; revoke restores", async () => {
+    engine.ingest([item("github:issue:1")]);
+    const before = (engine.policy() as { version: number; table: { scope: string; acceptMode?: string }[] });
+    const res = await fetch(base + "/api/grant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope: "issue" }) });
+    expect(res.status).toBe(200);
+    const after = engine.policy() as { version: number; table: { scope: string; acceptMode?: string }[] };
+    expect(after.version).toBe(before.version + 1);
+    expect(after.table.find((r) => r.scope === "issue")!.acceptMode).toBe("auto");
+    const kinds = engine.ledger.eventsAfter(0, 200).map((e) => e.kind);
+    expect(kinds).toContain("policy.rung");
+    const res2 = await fetch(base + "/api/revoke", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope: "issue" }) });
+    expect(res2.status).toBe(200);
+    const final = engine.policy() as { version: number; table: { scope: string; acceptMode?: string }[] };
+    expect(final.version).toBe(after.version + 1);
+    expect(final.table.find((r) => r.scope === "issue")!.acceptMode).toBeUndefined();
+  });
+});
+
 describe("trust console slice 1 (v1.6)", () => {
   it("GET /api/review serves the promotion desk with era-aware evidence", async () => {
     engine.ingest([item("github:issue:1"), item("github:issue:2"), item("github:issue:3")]);

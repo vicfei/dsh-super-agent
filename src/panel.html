@@ -171,13 +171,31 @@ function renderStream() {
 let evInited = false;
 function streamInit() { if (evInited) return; evInited = true; pollEvents(); setInterval(pollEvents, 5000); }
 
+async function grantRung(scope, currentShadows) {
+  const v = document.getElementById('pv').textContent;
+  if (!confirm(`GRANT the auto rung to "${scope}"?\n\nPolicy diff:\n  table[${scope}].acceptMode = "auto"\n  policy version ${v} → ${Number(v) + 1}\n\nEvidence behind this: ${currentShadows} current-era shadow decisions.`)) return;
+  if (!confirm('Double-key (mirrors the IM digit-2 pattern): click OK again within this dialog round to confirm. A person grants rungs; the ledger records it.')) return;
+  const r = await api('/api/grant', { scope });
+  if (r.policy) { renderReview(); render(); }
+}
+async function revokeRung(scope) {
+  if (!confirm(`Revoke the auto rung on "${scope}"? (override removed, policy version bumps — the scope falls back to the global mode)`)) return;
+  const r = await api('/api/revoke', { scope });
+  if (r.policy) { renderReview(); render(); }
+}
 async function renderReview() {
   const r = await api('/api/review');
   const SUG = { 'auto-candidate': '🟢 auto-candidate', 'hold': '🔴 hold', 'insufficient': '⚪ insufficient' };
   const card = s => {
     const stale = s.shadows !== s.shadowsCurrent
       ? ` <span class="quiet">(only ${s.shadowsCurrent} under v${r.currentVersion ?? '?'})</span>` : '';
-    return `<div class="rcard"><b>${esc(s.scope)}</b> — ${s.shadows} shadows${stale} · ${s.threads} threads · ${s.autoAccepts} auto-accepts · ${s.assessorNegatives} rejections → <b>${SUG[s.suggestion] ?? s.suggestion}</b></div>`;
+    const action = s.autoGranted
+      ? ` <a href="#" onclick="revokeRung('${esc(s.scope)}');return false" title="remove the per-scope auto override (policy version bumps)">revoke</a>`
+      : s.suggestion === 'auto-candidate'
+        ? ` <a href="#" onclick="grantRung('${esc(s.scope)}', ${s.shadowsCurrent});return false" title="grant per-scope auto — policy diff: table[${esc(s.scope)}].acceptMode = 'auto'; version bumps">🔧 GRANT AUTO RUNG</a>`
+        : '';
+    const mark = s.autoGranted ? '🟢 <b>AUTO GRANTED</b> — ' : '';
+    return `<div class="rcard">${mark}<b>${esc(s.scope)}</b> — ${s.shadows} shadows${stale} · ${s.threads} threads · ${s.autoAccepts} auto-accepts · ${s.assessorNegatives} rejections → <b>${SUG[s.suggestion] ?? s.suggestion}</b>${action}</div>`;
   };
   const eras = r.byPolicyVersion.map(p => `v${p.version}: ${p.wouldAccept}/${p.decisions}`).join(' · ');
   document.getElementById('review').innerHTML = r.byScope.map(card).join('') +

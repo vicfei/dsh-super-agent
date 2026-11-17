@@ -73,6 +73,12 @@ describe("reviewReport", () => {
     expect(text).toContain("**auto-candidate**");
     expect(text).toContain("github:o/r/issues/100");
 
+    // grant a per-scope rung via the engine (v1.6): the review marks it GRANTED
+    engine.grantRung("issue");
+    r = reviewReport(engine);
+    expect(r.byScope.find((x) => x.scope === "issue")!.autoGranted).toBe(true);
+    expect(formatReview(r)).toContain("GRANTED");
+
     // v3 flips to auto: inferred candidates now ACCEPT; eras table shows all three
     const v3: Policy = { ...base, version: 3, acceptMode: "auto" };
     engine.setPolicyIfChanged(v3);

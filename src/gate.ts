@@ -3,12 +3,12 @@
 // admission table. LLM assessment (Slow Path) only ever sees candidates that survive here, and
 // only for inferred strength — natural language can never turn an ignore into an admit.
 
-import type { Cell, Policy, Strength, Trigger } from "./domain.js";
+import type { Cell, Policy, Scope, Strength, Trigger } from "./domain.js";
 import { routineDefinitions, routineIdOfLogin, routinesEnabled } from "./routines.js";
 
 export type GateResult =
-  | { strength: Strength; basis: string }
-  | { strength: null; basis: string };
+  | { strength: Strength; basis: string; scope?: Scope }
+  | { strength: null; basis: string; scope?: Scope };
 
 const lc = (s: string) => s.toLowerCase();
 
@@ -26,6 +26,10 @@ function rowOf(policy: Policy, trigger: Trigger) {
  * The clock does not create scope and does not escalate trust.
  */
 function evaluateTimerGate(policy: Policy, trigger: Trigger): GateResult {
+  return { ...evaluateTimerGateInner(policy, trigger), scope: trigger.scope };
+}
+
+function evaluateTimerGateInner(policy: Policy, trigger: Trigger): GateResult {
   const id = routineIdOfLogin(trigger.author.login) ?? "(unknown)";
   const def = routinesEnabled(policy) ? routineDefinitions(policy).find((d) => d.id === id) : undefined;
   if (!def) return { strength: null, basis: `timer trigger for routine ${id} not in loaded policy — the clock does not create scope` };
@@ -40,6 +44,10 @@ function evaluateTimerGate(policy: Policy, trigger: Trigger): GateResult {
 
 /** A listed bot can produce an inferred candidate, never an explicit request. */
 export function evaluateGate(policy: Policy, trigger: Trigger): GateResult {
+  return { ...evaluateGateInner(policy, trigger), scope: trigger.scope };
+}
+
+function evaluateGateInner(policy: Policy, trigger: Trigger): GateResult {
   if (trigger.source === "timer") return evaluateTimerGate(policy, trigger);
   const row = rowOf(policy, trigger);
   const listed = policy.allowedList.map(lc).includes(lc(trigger.author.login));
@@ -101,7 +109,10 @@ export function resolveCandidate(
     return { action: "reject", basis: `inferred candidate assessed negative (${gate.basis})` };
   }
 
-  switch (policy.acceptMode) {
+  // v1.6 rungs: a per-scope acceptMode override beats the engine's global mode.
+  const row = policy.table.find((r) => r.scope === (gate.scope ?? ""));
+  const mode = row?.acceptMode ?? policy.acceptMode;
+  switch (mode) {
     case "off":
       return { action: "reject", basis: "inferred strength has no effect while acceptMode is off" };
     case "observe":

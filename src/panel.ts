@@ -199,7 +199,7 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
         supersededBy: r.superseded_by === null ? null : Number(r.superseded_by),
       }))));
     }
-    if (req.method === "POST" && (url.pathname === "/api/mode" || url.pathname === "/api/stop" || url.pathname === "/api/promote")) {
+    if (req.method === "POST" && (url.pathname === "/api/mode" || url.pathname === "/api/stop" || url.pathname === "/api/promote" || url.pathname === "/api/grant" || url.pathname === "/api/revoke")) {
       // Loopback is not a CSRF exemption: a malicious page in ANY browser tab can fire a
       // no-cors text/plain POST at 127.0.0.1. Refuse cross-origin requests outright and
       // require the JSON content type (no-cors simple requests cannot send it).
@@ -217,7 +217,7 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       req.on("data", (c) => (body += c));
       req.on("end", () => {
         try {
-          const parsed = JSON.parse(body || "{}") as { mode?: string; id?: number };
+          const parsed = JSON.parse(body || "{}") as { mode?: string; id?: number; scope?: string };
           if (url.pathname === "/api/promote") {
             const ok = typeof parsed.id === "number" ? engine.promoteTicket(parsed.id, "panel") : false;
             send(ok ? 200 : 404, "application/json", JSON.stringify({ promoted: ok }));
@@ -230,6 +230,20 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
             }
             const next = engine.setAcceptMode(parsed.mode);
             send(200, "application/json", JSON.stringify({ policy: next }));
+            return;
+          }
+          if (url.pathname === "/api/grant" || url.pathname === "/api/revoke") {
+            const scope = String(parsed.scope ?? "");
+            if (!scope) {
+              send(400, "application/json", JSON.stringify({ error: "scope is required" }));
+              return;
+            }
+            const next = url.pathname === "/api/grant" ? engine.grantRung(scope) : engine.revokeRung(scope);
+            if (!next) {
+              send(404, "application/json", JSON.stringify({ error: "no policy loaded" }));
+              return;
+            }
+            send(200, "application/json", JSON.stringify({ policy: { version: next.version, scope } }));
             return;
           }
           const ok = typeof parsed.id === "number" ? engine.stopTicket(parsed.id, "panel") : false;

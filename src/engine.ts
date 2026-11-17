@@ -252,6 +252,30 @@ export class Engine {
     return true;
   }
 
+  /** v1.6 rungs (review desk): grant/revoke a per-scope acceptMode override, versioned. */
+  grantRung(scope: string): Policy | undefined {
+    const current = this.policy();
+    if (!current) return undefined;
+    if (current.table.find((r) => r.scope === scope)?.acceptMode === "auto") return current;
+    const table = current.table.map((r) => (r.scope === scope ? { ...r, acceptMode: "auto" as const } : r));
+    const next: Policy = { ...current, table, version: current.version + 1 };
+    this.setPolicyIfChanged(next);
+    this.ledger.emit("policy.rung", { scope, to: "auto", version: next.version });
+    return next;
+  }
+
+  revokeRung(scope: string): Policy | undefined {
+    const current = this.policy();
+    if (!current) return undefined;
+    const row = current.table.find((r) => r.scope === scope);
+    if (!row || row.acceptMode === undefined) return current;
+    const table = current.table.map((r) => (r.scope === scope ? { ...r, acceptMode: undefined } : r));
+    const next: Policy = { ...current, table, version: current.version + 1 };
+    this.setPolicyIfChanged(next);
+    this.ledger.emit("policy.rung", { scope, to: "(global)", version: next.version });
+    return next;
+  }
+
   /** Panel command acting directly: switch acceptMode, versioned. */
   setAcceptMode(mode: Policy["acceptMode"]): Policy | undefined {
     const current = this.policy();

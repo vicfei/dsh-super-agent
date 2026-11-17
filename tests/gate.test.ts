@@ -122,3 +122,18 @@ describe("resolveCandidate (mode ladder)", () => {
     expect(() => resolveCandidate(policy, inferredGate, undefined)).toThrow(/assessment/);
   });
 });
+
+
+describe("per-scope rung overrides (v1.6 slice 4)", () => {
+  const t: Trigger = { id: "x1", source: "github", scope: "issue", threadId: "github:o/r/issues/1", author: { login: "alice", isBot: false }, addressing: false, body: "b", ts: "2026-11-17T00:00:00Z" };
+  it("a row acceptMode=auto overrides the engine's global observe", () => {
+    const p: Policy = { version: 1, allowedList: ["alice"], botList: [], acceptMode: "observe", table: [{ scope: "issue", listedNotAddressing: "inferred", unlistedAddressing: "ignore", unlistedNotAddressing: "ignore", acceptMode: "auto" }] };
+    const gate = evaluateGate(p, t);
+    expect(gate.scope).toBe("issue");
+    expect(resolveCandidate(p, gate, "positive")).toMatchObject({ action: "accept", strength: "inferred" });
+  });
+  it("a row acceptMode=observe shields a scope from a global auto", () => {
+    const p: Policy = { version: 1, allowedList: ["alice"], botList: [], acceptMode: "auto", table: [{ scope: "issue", listedNotAddressing: "inferred", unlistedAddressing: "ignore", unlistedNotAddressing: "ignore", acceptMode: "observe" }] };
+    expect(resolveCandidate(p, evaluateGate(p, t), "positive")).toMatchObject({ action: "shadow" });
+  });
+});

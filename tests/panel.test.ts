@@ -252,6 +252,19 @@ describe("v1.3 slice 3: audit depth", () => {
   });
 });
 
+describe("trust console slice 1 (v1.6)", () => {
+  it("GET /api/review serves the promotion desk with era-aware evidence", async () => {
+    engine.ingest([item("github:issue:1"), item("github:issue:2"), item("github:issue:3")]);
+    const r = (await (await fetch(base + "/api/review")).json()) as {
+      currentVersion: number; byScope: { scope: string; shadows: number; shadowsCurrent: number; suggestion: string }[];
+    };
+    expect(r.currentVersion).toBeGreaterThan(0);
+    const issue = r.byScope.find((s) => s.scope === "issue");
+    expect(issue).toBeDefined();
+    expect(issue!.shadows).toBe(issue!.shadowsCurrent); // fresh engine: all evidence is current-era
+  });
+});
+
 describe("evidence stream endpoints (v1.5 slice B)", () => {
   it("GET /api/events serves cursor semantics; /api/events/verify reports the chain", async () => {
     engine.ingest([item("github:issue:1")]);

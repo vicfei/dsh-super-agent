@@ -37,7 +37,8 @@
   .card.click { cursor: pointer; }
   .ic { display: inline-block; width: 16px; text-align: center; margin-right: 6px; font-weight: bold; }
   .ic.ok { color: #3fb950; } .ic.warn { color: #e3b341; } .ic.fail { color: #f85149; } .ic.info { color: #8b949e; }
-  footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
+  .rcard { border-left: 3px solid #30363d; padding: 6px 10px; margin: 6px 0; font-size: 13px; }
+footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
 .tp-node rect{fill:#161b22;stroke:#30363d}
 .tp-node text{fill:#c9d1d9}
 .tp-node .tp-t{font-size:13px;font-weight:600}
@@ -88,6 +89,9 @@
 <h2>Pull requests</h2>
 <div id="deliveries"></div>
 
+<h2>Review — the promotion desk</h2>
+<div id="review" class="quiet">loading…</div>
+
 <h2>Observe records — would accept</h2>
 <div id="shadows"></div>
 
@@ -114,8 +118,21 @@ async function api(path, body) {
   return res.json();
 }
 
+async function renderReview() {
+  const r = await api('/api/review');
+  const SUG = { 'auto-candidate': '🟢 auto-candidate', 'hold': '🔴 hold', 'insufficient': '⚪ insufficient' };
+  const card = s => {
+    const stale = s.shadows !== s.shadowsCurrent
+      ? ` <span class="quiet">(only ${s.shadowsCurrent} under v${r.currentVersion ?? '?'})</span>` : '';
+    return `<div class="rcard"><b>${esc(s.scope)}</b> — ${s.shadows} shadows${stale} · ${s.threads} threads · ${s.autoAccepts} auto-accepts · ${s.assessorNegatives} rejections → <b>${SUG[s.suggestion] ?? s.suggestion}</b></div>`;
+  };
+  const eras = r.byPolicyVersion.map(p => `v${p.version}: ${p.wouldAccept}/${p.decisions}`).join(' · ');
+  document.getElementById('review').innerHTML = r.byScope.map(card).join('') +
+    `<div class="quiet">policy eras — ${esc(eras)}</div>`;
+}
 async function render() {
   const s = await api('/api/state');
+  renderReview();
   document.getElementById('pv').textContent = s.policy ? s.policy.version : '?';
   const mins = ms => ms === null ? '—' : Math.round(ms / 60000) + 'm';
   const h = s.health || { tickets: {}, effects: {} };

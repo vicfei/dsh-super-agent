@@ -38,6 +38,10 @@
   .ic { display: inline-block; width: 16px; text-align: center; margin-right: 6px; font-weight: bold; }
   .ic.ok { color: #3fb950; } .ic.warn { color: #e3b341; } .ic.fail { color: #f85149; } .ic.info { color: #8b949e; }
   .rcard { border-left: 3px solid #30363d; padding: 6px 10px; margin: 6px 0; font-size: 13px; }
+.k-decision { border-left-color: #d29922; } .k-ticket { border-left-color: #2f81f7; }
+.k-policy, .k-engine { border-left-color: #8957e5; } .k-approval { border-left-color: #3fb950; }
+.streamctl { display: flex; gap: 10px; align-items: center; margin: 6px 0; font-size: 12px; }
+.streamctl select, .streamctl input { background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; padding: 2px 6px; }
 footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
 .tp-node rect{fill:#161b22;stroke:#30363d}
 .tp-node text{fill:#c9d1d9}
@@ -81,6 +85,13 @@ footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
 
 <h2>Evidence — the ledger</h2>
 <div id="ledgerVerify" class="quiet"></div>
+<div class="streamctl">
+  <select id="evKind" onchange="evFilterChanged()"><option value="">all kinds</option></select>
+  <input id="evThread" placeholder="filter by thread…" size="24" oninput="renderStream()">
+  <a href="#" id="evPause" onclick="evTogglePause();return false">⏸ pause</a>
+  <span class="quiet" id="evStatus"></span>
+</div>
+<svg id="evRail" width="100%" height="46" style="display:block"></svg>
 <div id="ledger"></div>
 
 <h2>Memory — the durable tier</h2>
@@ -117,6 +128,48 @@ async function api(path, body) {
   const res = await fetch(path, body ? {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body)} : undefined);
   return res.json();
 }
+
+// ── evidence stream: cursor accumulation, filters, pause, timeline rail (v1.6 slices 2+3)
+const evBuf = []; let evCursor = 0, evPaused = false, evKinds = new Set();
+function kindClass(k) { return k.startsWith('decision') ? 'k-decision' : k.startsWith('ticket') ? 'k-ticket' : (k.startsWith('policy') || k.startsWith('engine')) ? 'k-policy' : k.startsWith('approval') ? 'k-approval' : ''; }
+async function pollEvents() {
+  if (evPaused) return;
+  let r;
+  try { r = await api(`/api/events?after=${evCursor}&limit=50`); } catch { return; }
+  for (const e of r.events || []) {
+    evBuf.unshift(e); evCursor = Math.max(evCursor, e.id);
+    if (!evKinds.has(e.kind)) { evKinds.add(e.kind); const s = document.getElementById('evKind'); const o = document.createElement('option'); o.value = o.textContent = e.kind; s.appendChild(o); }
+  }
+  evBuf.length = Math.min(evBuf.length, 200);
+  renderStream();
+}
+function evFilterChanged() { renderStream(); }
+function evTogglePause() { evPaused = !evPaused; document.getElementById('evPause').textContent = evPaused ? '▶ resume' : '⏸ pause'; }
+function renderStream() {
+  const kf = document.getElementById('evKind').value, tf = document.getElementById('evThread').value.toLowerCase();
+  const rows = evBuf.filter(e => (!kf || e.kind === kf) && (!tf || JSON.stringify(e.payload || {}).toLowerCase().includes(tf)));
+  document.getElementById('ledger').innerHTML = rows.length === 0
+    ? '<div class="quiet">no events match (or the ledger starts with the engine)</div>'
+    : rows.slice(0, 60).map(e => {
+        const d = Object.entries(e.payload || {}).slice(0, 3).map(([k, v2]) => `${esc(k)}=${esc(String(v2))}`).join(' ');
+        return `<div class="card ${kindClass(e.kind)}" title="#${e.id}"><span class="quiet">#${e.id} ${esc(e.ts.slice(5, 19))}</span> <b>${esc(e.kind)}</b> <span class="quiet">${d}</span></div>`;
+      }).join('');
+  document.getElementById('evStatus').textContent = `cursor ${evCursor} · ${evBuf.length} buffered`;
+  const svg = document.getElementById('evRail');
+  if (evBuf.length > 0) {
+    const lo = evBuf[evBuf.length - 1].id, hi = evBuf[0].id, span = Math.max(1, hi - lo);
+    const W = svg.clientWidth || 860;
+    svg.innerHTML = `<line x1="10" y1="23" x2="${W - 10}" y2="23" stroke="#30363d" stroke-width="2"/>` +
+      evBuf.map(e => {
+        const x = 10 + ((e.id - lo) / span) * (W - 20);
+        const c = kindClass(e.kind);
+        const col = c === 'k-decision' ? '#d29922' : c === 'k-ticket' ? '#2f81f7' : (c === 'k-policy') ? '#8957e5' : c === 'k-approval' ? '#3fb950' : '#8b949e';
+        return `<circle cx="${x.toFixed(1)}" cy="23" r="3.5" fill="${col}"><title>#${e.id} ${esc(e.kind)} ${esc(e.ts.slice(5, 19))}</title></circle>`;
+      }).join('');
+  }
+}
+let evInited = false;
+function streamInit() { if (evInited) return; evInited = true; pollEvents(); setInterval(pollEvents, 5000); }
 
 async function renderReview() {
   const r = await api('/api/review');
@@ -224,14 +277,7 @@ async function render() {
   } catch { /* topology is best-effort */ }
 
   try {
-    const ev = await api('/api/events?limit=25');
-    const rows = (ev.events || []).slice().reverse();
-    document.getElementById('ledger').innerHTML = rows.length === 0
-      ? '<div class="quiet">no events yet — the ledger starts with the engine</div>'
-      : rows.map(e => {
-          const d = Object.entries(e.payload || {}).slice(0, 3).map(([k, v2]) => `${esc(k)}=${esc(String(v2))}`).join(' ');
-          return `<div class="card"><span class="quiet">#${e.id} ${esc(e.ts.slice(5, 19))}</span> <b>${esc(e.kind)}</b> <span class="quiet">${d}</span></div>`;
-        }).join('');
+    streamInit();
     const ver = await api('/api/events/verify');
     const el = document.getElementById('ledgerVerify');
     el.innerHTML = ver.ok

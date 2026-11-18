@@ -66,7 +66,13 @@ function dbTriggerOf(engine: Engine, id: string) {
   };
 }
 
-export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doctorCtx?: PanelDoctorContext): Promise<Server> {
+/** A panel server with a shutdown guard: after `shutdown()`, handlers answer 503 instead of
+ *  touching the (about-to-close) database — the DB can then close while requests are still
+ *  draining without crashing the process (live finding #144: a watch daemon's panel kept
+ *  serving after engine.close() and one late /api/state request hung SIGTERM forever). */
+export type PanelServer = Server & { shutdown(): void };
+
+export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doctorCtx?: PanelDoctorContext): Promise<PanelServer> {
   let doctorCache: { at: number; report: DoctorReport } | null = null;
   const doctorNow = async (): Promise<DoctorReport | null> => {
     if (!doctorCtx) return null;
@@ -90,7 +96,15 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
     doctorCache = { at: Date.now(), report };
     return report;
   };
+  let closing = false;
   const server = createServer(async (req, res) => {
+    // #144: once shutdown begins, refuse new work BEFORE any engine.db touch — an in-flight
+    // keep-alive request after engine.close() would otherwise throw on the closed database.
+    if (closing) {
+      res.writeHead(503, { "content-type": "text/plain; charset=utf-8", connection: "close", "cache-control": "no-store" });
+      res.end("panel shutting down");
+      return;
+    }
     const url = new URL(req.url ?? "/", "http://local");
     const send = (status: number, type: string, body: string) => {
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
@@ -255,6 +269,15 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       return;
     }
     send(404, "text/plain", "not found");
-  });
+  }) as PanelServer;
+  server.shutdown = () => {
+    closing = true; // established connections that send another request inside the drain
+    // window bounce off the 503 guard instead of reaching the closing database
+    server.close(); // no NEW connections once this returns
+    // Drain window, then drop lingering sockets so the event loop can actually exit
+    // (unref'd: a shutdown timer must never be the thing keeping the process alive).
+    setTimeout(() => server.closeIdleConnections(), 200).unref();
+    setTimeout(() => server.closeAllConnections(), 2000).unref();
+  };
   return new Promise((resolve) => server.listen(port, host, () => resolve(server)));
 }

@@ -175,6 +175,9 @@ if (command === "doctor") {
 }
 
 const engine = new Engine(args.db);
+// #144: the watch daemon's panel must drain BEFORE the finally-close takes the database —
+// a live panel polls every 3s, so an unguarded close gets hit within seconds and hangs SIGTERM.
+let panelServer: import("./panel.js").PanelServer | undefined;
 
 function readPolicyConfig(opts: { skipRoutineValidation?: boolean } = {}): Policy {
   if (!existsSync(args.config) && scaffoldFromExample(args.config, "policy.json")) {
@@ -316,7 +319,7 @@ try {
     if (!args["no-panel"]) {
       const port = Number(process.env.PANEL_PORT ?? 8787);
       const { startPanel } = await import("./panel.js");
-      await startPanel(engine, port, "127.0.0.1", {
+      panelServer = await startPanel(engine, port, "127.0.0.1", {
         executor: { command: execCfg.command, sandbox: execCfg.sandbox, prepare: execCfg.prepare },
         repo: args.repo,
         dbPath: args.db,
@@ -404,6 +407,9 @@ try {
       memoryDistiller: buildDistiller() ?? undefined,
       intervalMs: args.interval ? Number(args.interval) * 1000 : undefined,
     });
+    // The loop only returns on SIGINT/SIGTERM — drain the panel FIRST (handlers go 503),
+    // so the finally-close below can take the database without a live request hitting it.
+    panelServer?.shutdown();
   } else if (command === "work") {
     if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
     const execCfg = loadExecutorConfig();
@@ -447,8 +453,11 @@ try {
     const server = await startPanel(engine, port, "127.0.0.1", { executor: doctorExec, repo: args.repo, dbPath: args.db });
     console.log(`panel: http://127.0.0.1:${port} (db ${args.db}) — Ctrl-C to stop`);
     const shutdown = () => {
+      server.shutdown(); // 503-guard + stop accepting + drop idle keep-alives (#144)
+      engine.close(); // safe now: draining requests bounce off the guard, never reach the DB
       server.close(() => process.exit(0));
-      engine.close();
+      // Live connections still mid-request get a grace window, then we force the event loop down.
+      setTimeout(() => { server.closeAllConnections(); process.exit(0); }, 2000).unref();
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);

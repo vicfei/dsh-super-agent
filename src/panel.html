@@ -64,12 +64,12 @@ footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
 </style>
 </head>
 <body>
-<h1>dsh-super-agent</h1>
-<div class="sub">Messages cannot change permissions — host-enforced admission · policy v<span id=pv></span></div>
+<h1>dsh-super-agent <button id="langToggle" onclick="toggleLang()" title="切换语言 / switch language" style="background:#21262d;color:#8b949e;border:1px solid #30363d;border-radius:6px;padding:1px 8px;font:inherit;font-size:12px;cursor:pointer;vertical-align:middle;margin-left:8px">中文</button></h1>
+<div class="sub"><span data-i18n="banner">Messages cannot change permissions — host-enforced admission · policy v</span><span id=pv></span></div>
 <div class="sub" id="health"></div>
 
 <div class="mode">
-  accept mode:
+  <span data-i18n="acceptMode">accept mode:</span>
   <span id="modes">
     <button data-mode="off">off</button>
     <button data-mode="observe">observe</button>
@@ -78,59 +78,162 @@ footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
   <span class="quiet" id="modehint"></span>
 </div>
 
-<h2>Awaiting a human</h2>
+<h2 data-i18n="hAwaiting">Awaiting a human</h2>
 <div id="awaiting"></div>
 
-<h2>Rehearsed — speculative backlog</h2>
-<div class="quiet" style="margin:-4px 0 8px">rehearsal only: shadow-accepted work waiting for a person to promote — collapses by opener</div>
+<h2 data-i18n="hSpec">Rehearsed — speculative backlog</h2>
+<div class="quiet" style="margin:-4px 0 8px" data-i18n="hintSpec">rehearsal only: shadow-accepted work waiting for a person to promote — collapses by opener</div>
 <div id="speculative"></div>
 
-<h2>Topology — the machine at a glance</h2>
+<h2 data-i18n="hTopology">Topology — the machine at a glance</h2>
 <div id="topology"></div>
 
-<h2>By person</h2>
+<h2 data-i18n="hPersons">By person</h2>
 <div id="persons"></div>
 
-<h2>Pending approvals (IM)</h2>
-<div class="quiet" style="margin:-4px 0 8px">approval digits ride the ops IM route — the channel prefix on each card (e.g. wechat) says where to reply</div>
+<h2 data-i18n="hApprovals">Pending approvals (IM)</h2>
+<div class="quiet" style="margin:-4px 0 8px" data-i18n="hintApprovals">approval digits ride the ops IM route — the channel prefix on each card (e.g. wechat) says where to reply</div>
 <div id="approvals"></div>
 
-<h2>Routines — the clock</h2>
+<h2 data-i18n="hRoutines">Routines — the clock</h2>
 <div id="routines"></div>
 
-<h2>Evidence — the ledger</h2>
+<h2 data-i18n="hEvidence">Evidence — the ledger</h2>
 <div id="ledgerVerify" class="quiet"></div>
 <div class="streamctl">
-  <select id="evKind" onchange="evFilterChanged()"><option value="">all kinds</option></select>
-  <input id="evThread" placeholder="filter by thread…" size="24" oninput="renderStream()">
-  <a href="#" id="evPause" onclick="evTogglePause();return false">⏸ pause</a>
+  <select id="evKind" onchange="evFilterChanged()"><option value="" data-i18n="allKinds">all kinds</option></select>
+  <input id="evThread" data-i18n-ph="filterThread" placeholder="filter by thread…" size="24" oninput="renderStream()">
+  <a href="#" id="evPause" onclick="evTogglePause();return false">⏸ <span data-i18n="pause">pause</span></a>
   <span class="quiet" id="evStatus"></span>
 </div>
 <svg id="evRail" width="100%" height="46" style="display:block"></svg>
 <div id="ledger"></div>
 
-<h2>Memory — the durable tier</h2>
+<h2 data-i18n="hMemory">Memory — the durable tier</h2>
 <div id="memory"></div>
 
-<h2>Pull requests</h2>
+<h2 data-i18n="hPRs">Pull requests</h2>
 <div id="deliveries"></div>
 
-<h2>Review — the promotion desk</h2>
+<h2 data-i18n="hReview">Review — the promotion desk</h2>
 <div id="review" class="quiet">loading…</div>
 
-<h2>Observe records — would accept</h2>
+<h2 data-i18n="hShadows">Observe records — would accept</h2>
 <div id="shadows"></div>
 
-<h2>Recent decisions</h2>
-<table><thead><tr><th>when</th><th>outcome</th><th>strength</th><th>author</th><th>thread</th><th>basis / excerpt</th></tr></thead>
+<h2 data-i18n="hDecisions">Recent decisions</h2>
+<table><thead><tr><th data-i18n="thWhen">when</th><th data-i18n="thOutcome">outcome</th><th data-i18n="thStrength">strength</th><th data-i18n="thAuthor">author</th><th data-i18n="thThread">thread</th><th data-i18n="thBasis">basis / excerpt</th></tr></thead>
 <tbody id="decisions"></tbody></table>
 
-<h2>Doctor — the setup truth</h2>
+<h2 data-i18n="hDoctor">Doctor — the setup truth</h2>
 <div id="doctor"></div>
 
-<footer>healthy state takes no space — empty sections mean nothing needs you</footer>
+<footer data-i18n="footer">healthy state takes no space — empty sections mean nothing needs you</footer>
 
 <script>
+// ── i18n: interface language with English domain terms — badges/scope/kind names stay
+// English in both locales because they mirror the CLI output and docs/002 vocabulary.
+const I18N = {
+  en: {
+    banner: "Messages cannot change permissions — host-enforced admission · policy v",
+    acceptMode: "accept mode:",
+    hAwaiting: "Awaiting a human", hSpec: "Rehearsed — speculative backlog",
+    hintSpec: "rehearsal only: shadow-accepted work waiting for a person to promote — collapses by opener",
+    hTopology: "Topology — the machine at a glance", hPersons: "By person",
+    hApprovals: "Pending approvals (IM)",
+    hintApprovals: "approval digits ride the ops IM route — the channel prefix on each card (e.g. wechat) says where to reply",
+    hRoutines: "Routines — the clock", hEvidence: "Evidence — the ledger", hMemory: "Memory — the durable tier",
+    hPRs: "Pull requests", hReview: "Review — the promotion desk", hShadows: "Observe records — would accept",
+    hDecisions: "Recent decisions", hDoctor: "Doctor — the setup truth",
+    thWhen: "when", thOutcome: "outcome", thStrength: "strength", thAuthor: "author", thThread: "thread", thBasis: "basis / excerpt",
+    allKinds: "all kinds", filterThread: "filter by thread…", pause: "pause", resume: "resume",
+    footer: "healthy state takes no space — empty sections mean nothing needs you",
+    nothingNeeds: "nothing needs you", noDecisionsRehearsal: "no ticket needs a decision — the backlog below is rehearsal only",
+    noRehearsed: "no rehearsed work", clickHistory: "click for run history", rehearsedSilently: "rehearsed silently",
+    promote: "promote", stop: "stop", noTickets: "no tickets yet", noOpenWork: "no open work",
+    noApprovals: "no approval requests waiting", opsThread: "ops thread", since: "since", stale: "stale",
+    staleTitle: "older than 48h — check whether the thread moved on",
+    noTopology: "", tpCaption: "sources → gate → tickets → worker → outbox · would-accept",
+    noEvents: "no events match (or the ledger starts with the engine)", cursor: "cursor",
+    buffered: "buffered", chainIntact: "chain intact", reverify: "re-verify", chainBroken: "CHAIN BROKEN",
+    eventsChained: "events · hash-chained ·",
+    noMemory: "no distilled memories — two-tier memory is off or nothing completed yet",
+    clockOff: "the clock is off — policy.routines absent or disabled (nothing fires by default)",
+    noRoutines: "enabled, no definitions", scheduled: "scheduled", overdue: "overdue", next: "next",
+    catchup: "catch-up fires on the next sweep",
+    noPRs: "no pull requests opened", awaitingMerge: "awaiting merge requirements", autoMergeOff: "auto-merge off (policy.merge)",
+    noShadows: "no shadow records", wouldAccept: "would accept",
+    loading: "loading…", allClean: "all clean", offlineFacts: "offline facts, cached 60s",
+    failure: "failure", failures: "failures", warning: "warning", warnings: "warnings",
+    doctorNotWired: "not wired — start via dsh watch or dsh panel to embed the checks",
+    grantTitle: "grant per-scope auto — policy diff: table", revokeTitle: "remove the per-scope auto override (policy version bumps)",
+    confirmGrant: p => `GRANT the auto rung to "${p.scope}"?\n\nPolicy diff:\n  table[${p.scope}].acceptMode = "auto"\n  policy version ${p.v} → ${p.v + 1}\n\nEvidence behind this: ${p.n} current-era shadow decisions.`,
+    confirmDouble: "Double-key (mirrors the IM digit-2 pattern): click OK again within this dialog round to confirm. A person grants rungs; the ledger records it.",
+    confirmRevoke: s => `Revoke the auto rung on "${s}"? (override removed, policy version bumps — the scope falls back to the global mode)`,
+    confirmAuto: "auto accepts inferred work after assessment, without further review.\n\nStart in observe and review records first (docs/002). Switch to auto?",
+    confirmOff: "off rejects all inferred candidates. Explicit requests still work. Switch?",
+    confirmPromote: id => `Promote speculative ticket #${id}?\nThe rehearsed work will be pushed and a PR opened — the human deliver gate.`,
+    confirmStop: id => `End ticket #${id}? (a person’s stop withdraws its mandate)`,
+    modeHintObserve: " — inferred candidates do not run in this mode",
+    needsPersonTip: "tickets blocked on a human decision — see Awaiting a human",
+  },
+  zh: {
+    banner: "消息改不了权限——准入由宿主策略强制 · policy v",
+    acceptMode: "接受模式：",
+    hAwaiting: "等人来决定", hSpec: "预演——投机积压",
+    hintSpec: "仅预演：影子接受、等人 promote 的工作——按 opener 折叠",
+    hTopology: "拓扑——机器一览", hPersons: "按人",
+    hApprovals: "待审批（IM）",
+    hintApprovals: "审批数字走 ops IM 路由——卡片上的渠道前缀（如 wechat）标明去哪回复",
+    hRoutines: "例行——时钟", hEvidence: "证据——账本", hMemory: "记忆——持久层",
+    hPRs: "Pull request", hReview: "评审——晋升台", hShadows: "观察记录——would accept",
+    hDecisions: "近期决策", hDoctor: "体检——部署真相",
+    thWhen: "时间", thOutcome: "结果", thStrength: "强度", thAuthor: "作者", thThread: "线程", thBasis: "依据 / 摘录",
+    allKinds: "全部类型", filterThread: "按线程过滤…", pause: "暂停", resume: "继续",
+    footer: "健康状态不占版面——空节意味着不需要你",
+    nothingNeeds: "没事找你", noDecisionsRehearsal: "没有工单等你决策——下面的积压只是预演",
+    noRehearsed: "暂无预演工作", clickHistory: "点开看运行历史", rehearsedSilently: "静默预演",
+    promote: "转正", stop: "停止", noTickets: "还没有工单", noOpenWork: "无进行中工作",
+    noApprovals: "没有待审批", opsThread: "ops 线程", since: "自", stale: "陈旧",
+    staleTitle: "超过 48 小时——查一下线程是否已有进展",
+    noTopology: "", tpCaption: "sources → gate → tickets → worker → outbox · would-accept",
+    noEvents: "没有匹配的事件（或账本从引擎启动开始）", cursor: "游标",
+    buffered: "已缓冲", chainIntact: "链完好", reverify: "重新验证", chainBroken: "链已断",
+    eventsChained: "条事件 · 哈希链 ·",
+    noMemory: "暂无蒸馏记忆——两层记忆未启用或尚无完成工单",
+    clockOff: "时钟未开——policy.routines 缺失或禁用（默认不触发任何事）",
+    noRoutines: "已启用，无定义", scheduled: "已排期", overdue: "逾期", next: "下次",
+    catchup: "下个扫描周期补跑",
+    noPRs: "还没有开过 pull request", awaitingMerge: "等待合并条件满足", autoMergeOff: "自动合并关闭（policy.merge）",
+    noShadows: "暂无影子记录", wouldAccept: "would accept",
+    loading: "加载中…", allClean: "全部干净", offlineFacts: "离线事实，缓存 60 秒",
+    failure: "项失败", failures: "项失败", warning: "项警告", warnings: "项警告",
+    doctorNotWired: "未接线——用 dsh watch 或 dsh panel 启动以嵌入检查",
+    grantTitle: "授予范围级 auto——策略 diff：table", revokeTitle: "移除范围级 auto 覆盖（策略版本推进）",
+    confirmGrant: p => `授予 "${p.scope}" auto 档？\n\n策略 diff：\n  table[${p.scope}].acceptMode = "auto"\n  策略版本 ${p.v} → ${p.v + 1}\n\n背后证据：${p.n} 条现行纪元影子决策。`,
+    confirmDouble: "双键确认（对应 IM 数字 2 的模式）：在本轮对话框再点一次 OK。档位由人授予；账本留痕。",
+    confirmRevoke: s => `撤销 "${s}" 的 auto 档？（移除覆盖，策略版本推进——该范围回落到全局模式）`,
+    confirmAuto: "auto 会在评估通过后直接接受推断工作，不再复核。\n\n建议先跑 observe 并审阅记录（docs/002）。仍要切到 auto？",
+    confirmOff: "off 拒绝所有推断候选。显式请求不受影响。确认切换？",
+    confirmPromote: id => `转正投机工单 #${id}？\n预演的工作将被推送并开出 PR——人工交付闸门。`,
+    confirmStop: id => `结束工单 #${id}？（人的停止即撤回其授权）`,
+    modeHintObserve: " —— 此模式下推断候选不会执行",
+    needsPersonTip: "等人决策的工单——见上方「等人来决定」",
+  },
+};
+let LANG = localStorage.getItem("dsh-lang") || (navigator.language && navigator.language.startsWith("zh") ? "zh" : "en");
+let evPaused = false; // hoisted: renderStatic() (called below) reads it for the pause label
+const t = k => (I18N[LANG] && I18N[LANG][k] !== undefined ? I18N[LANG][k] : I18N.en[k] ?? k);
+function renderStatic() {
+  document.querySelectorAll("[data-i18n]").forEach(el => { const v = t(el.dataset.i18n); if (v) el.textContent = v; });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => { const v = t(el.dataset.i18nPh); if (v) el.placeholder = v; });
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.getElementById("langToggle").textContent = LANG === "zh" ? "EN" : "中文";
+  document.getElementById("evPause").childNodes[1].textContent = evPaused ? ` ${t("resume")}` : ` ${t("pause")}`;
+}
+function toggleLang() { LANG = LANG === "zh" ? "en" : "zh"; localStorage.setItem("dsh-lang", LANG); renderStatic(); render(); renderReview(); renderStream(); }
+renderStatic();
+
 async function verifyNow() {
   const v = await (await fetch('/api/events/verify')).json();
   alert(v.ok ? `chain intact — ${v.count} events` : `BROKEN at #${v.firstBadId}: ${v.reason}`);
@@ -145,7 +248,7 @@ async function api(path, body) {
 }
 
 // ── evidence stream: cursor accumulation, filters, pause, timeline rail (v1.6 slices 2+3)
-const evBuf = []; let evCursor = 0, evPaused = false, evKinds = new Set();
+const evBuf = []; let evCursor = 0, evKinds = new Set();
 function kindClass(k) { return k.startsWith('decision') ? 'k-decision' : k.startsWith('ticket') ? 'k-ticket' : (k.startsWith('policy') || k.startsWith('engine')) ? 'k-policy' : k.startsWith('approval') ? 'k-approval' : ''; }
 async function pollEvents() {
   if (evPaused) return;
@@ -159,17 +262,17 @@ async function pollEvents() {
   renderStream();
 }
 function evFilterChanged() { renderStream(); }
-function evTogglePause() { evPaused = !evPaused; document.getElementById('evPause').textContent = evPaused ? '▶ resume' : '⏸ pause'; }
+function evTogglePause() { evPaused = !evPaused; const a = document.getElementById('evPause'); a.childNodes[0].textContent = evPaused ? '▶ ' : '⏸ '; a.childNodes[1].textContent = evPaused ? ` ${t('resume')}` : ` ${t('pause')}`; }
 function renderStream() {
   const kf = document.getElementById('evKind').value, tf = document.getElementById('evThread').value.toLowerCase();
   const rows = evBuf.filter(e => (!kf || e.kind === kf) && (!tf || JSON.stringify(e.payload || {}).toLowerCase().includes(tf)));
   document.getElementById('ledger').innerHTML = rows.length === 0
-    ? '<div class="quiet">no events match (or the ledger starts with the engine)</div>'
+    ? `<div class="quiet">${t('noEvents')}</div>`
     : rows.slice(0, 60).map(e => {
         const d = Object.entries(e.payload || {}).slice(0, 3).map(([k, v2]) => `${esc(k)}=${esc(String(v2))}`).join(' ');
         return `<div class="card ${kindClass(e.kind)}" title="#${e.id}"><span class="quiet">#${e.id} ${esc(e.ts.slice(5, 19))}</span> <b>${esc(e.kind)}</b> <span class="quiet">${d}</span></div>`;
       }).join('');
-  document.getElementById('evStatus').textContent = `cursor ${evCursor} · ${evBuf.length} buffered`;
+  document.getElementById('evStatus').textContent = `${t('cursor')} ${evCursor} · ${evBuf.length} ${t('buffered')}`;
   const svg = document.getElementById('evRail');
   if (evBuf.length > 0) {
     const lo = evBuf[evBuf.length - 1].id, hi = evBuf[0].id, span = Math.max(1, hi - lo);
@@ -188,13 +291,13 @@ function streamInit() { if (evInited) return; evInited = true; pollEvents(); set
 
 async function grantRung(scope, currentShadows) {
   const v = document.getElementById('pv').textContent;
-  if (!confirm(`GRANT the auto rung to "${scope}"?\n\nPolicy diff:\n  table[${scope}].acceptMode = "auto"\n  policy version ${v} → ${Number(v) + 1}\n\nEvidence behind this: ${currentShadows} current-era shadow decisions.`)) return;
-  if (!confirm('Double-key (mirrors the IM digit-2 pattern): click OK again within this dialog round to confirm. A person grants rungs; the ledger records it.')) return;
+  if (!confirm(t('confirmGrant')({ scope, v: Number(v), n: currentShadows }))) return;
+  if (!confirm(t('confirmDouble'))) return;
   const r = await api('/api/grant', { scope });
   if (r.policy) { renderReview(); render(); }
 }
 async function revokeRung(scope) {
-  if (!confirm(`Revoke the auto rung on "${scope}"? (override removed, policy version bumps — the scope falls back to the global mode)`)) return;
+  if (!confirm(t('confirmRevoke')(scope))) return;
   const r = await api('/api/revoke', { scope });
   if (r.policy) { renderReview(); render(); }
 }
@@ -205,9 +308,9 @@ async function renderReview() {
     const stale = s.shadows !== s.shadowsCurrent
       ? ` <span class="quiet">(only ${s.shadowsCurrent} under v${r.currentVersion ?? '?'})</span>` : '';
     const action = s.autoGranted
-      ? ` <a href="#" onclick="revokeRung('${esc(s.scope)}');return false" title="remove the per-scope auto override (policy version bumps)">revoke</a>`
+      ? ` <a href="#" onclick="revokeRung('${esc(s.scope)}');return false" title="${esc(t('revokeTitle'))}">revoke</a>`
       : s.suggestion === 'auto-candidate'
-        ? ` <a href="#" onclick="grantRung('${esc(s.scope)}', ${s.shadowsCurrent});return false" title="grant per-scope auto — policy diff: table[${esc(s.scope)}].acceptMode = 'auto'; version bumps">🔧 GRANT AUTO RUNG</a>`
+        ? ` <a href="#" onclick="grantRung('${esc(s.scope)}', ${s.shadowsCurrent});return false" title="${esc(t('grantTitle'))}[${esc(s.scope)}].acceptMode = 'auto'; version bumps">🔧 GRANT AUTO RUNG</a>`
         : '';
     const mark = s.autoGranted ? '🟢 <b>AUTO GRANTED</b> — ' : '';
     return `<div class="rcard">${mark}<b>${esc(s.scope)}</b> — ${s.shadows} shadows${stale} · ${s.threads} threads · ${s.autoAccepts} auto-accepts · ${s.assessorNegatives} rejections → <b>${SUG[s.suggestion] ?? s.suggestion}</b>${action}</div>`;
@@ -228,7 +331,7 @@ async function render() {
   };
   const h = s.health || { tickets: {}, effects: {} };
   document.getElementById('health').innerHTML =
-    `queued ${h.tickets.queued ?? 0} · working ${h.tickets.working ?? 0} · <span title="tickets blocked on a human decision — see Awaiting a human">needs-person ${h.tickets['needs-person'] ?? 0}</span> · ended ${h.tickets.ended ?? 0}` +
+    `queued ${h.tickets.queued ?? 0} · working ${h.tickets.working ?? 0} · <span title="${esc(t('needsPersonTip'))}">needs-person ${h.tickets['needs-person'] ?? 0}</span> · ended ${h.tickets.ended ?? 0}` +
     ` · effects pending ${h.pendingEffects ?? 0} / failed ${h.failedEffects ?? 0}` +
     ` · oldest working ${mins(h.oldestWorkingMs)} · oldest needs-person ${mins(h.oldestNeedsPersonMs)}`;
   document.querySelectorAll('#modes button').forEach(b => {
@@ -237,7 +340,7 @@ async function render() {
     b.setAttribute('aria-pressed', String(on));
   });
   document.getElementById('modehint').textContent =
-    s.policy && s.policy.acceptMode === 'auto' ? '' : ' — inferred candidates do not run in this mode';
+    s.policy && s.policy.acceptMode === 'auto' ? '' : t('modeHintObserve');
 
   const spec = s.tickets.filter(t => t.speculative);
   const personTickets = s.tickets.filter(t => t.stage === 'needs-person');
@@ -247,23 +350,23 @@ async function render() {
   // morning-digest wall buried the one card that mattered).
   document.getElementById('awaiting').innerHTML =
     (personTickets.length === 0 && revoked.length === 0)
-      ? `<div class="quiet">${spec.length ? 'no ticket needs a decision — the backlog below is rehearsal only' : 'nothing needs you'}</div>`
-      : personTickets.map(t => `<div class="card click" onclick="auditTicket(this, ${t.id})"><span class="badge b-person">needs-person</span>
-          ticket #${t.id} ${esc(t.strength)} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)}
-          <button class="stop" onclick="event.stopPropagation(); stopTicket(${t.id})">stop</button> · click for run history</div>`).join('')
-        + revoked.map(t => `<div class="card"><span class="badge b-ignore">revoked</span>
-          ticket #${t.id} — ${esc(t.revokedReason)}</div>`).join('');
+      ? `<div class="quiet">${spec.length ? t('noDecisionsRehearsal') : t('nothingNeeds')}</div>`
+      : personTickets.map(t2 => `<div class="card click" onclick="auditTicket(this, ${t2.id})"><span class="badge b-person">needs-person</span>
+          ticket #${t2.id} ${esc(t2.strength)} ${esc(threadShort(t2.threadId))} opener=${esc(t2.opener)}
+          <button class="stop" onclick="event.stopPropagation(); stopTicket(${t2.id})">${esc(t('stop'))}</button> · ${esc(t('clickHistory'))}</div>`).join('')
+        + revoked.map(rv => `<div class="card"><span class="badge b-ignore">revoked</span>
+          ticket #${rv.id} — ${esc(rv.revokedReason)}</div>`).join('');
 
-  const specCard = t => `<div class="card click" onclick="auditTicket(this, ${t.id})"><span class="badge b-shadow">speculative</span>
-          ticket #${t.id} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)} — rehearsed silently
-          <button class="stop" style="color:#3fb950;border-color:#3fb95066" onclick="event.stopPropagation(); promoteTicket(${t.id})">promote</button> · click for run history</div>`;
+  const specCard = tc => `<div class="card click" onclick="auditTicket(this, ${tc.id})"><span class="badge b-shadow">speculative</span>
+          ticket #${tc.id} ${esc(threadShort(tc.threadId))} opener=${esc(tc.opener)} — ${esc(t('rehearsedSilently'))}
+          <button class="stop" style="color:#3fb950;border-color:#3fb95066" onclick="event.stopPropagation(); promoteTicket(${tc.id})">${esc(t('promote'))}</button> · ${esc(t('clickHistory'))}</div>`;
   const specGroups = new Map();
-  for (const t of spec) {
-    if (!specGroups.has(t.opener)) specGroups.set(t.opener, []);
-    specGroups.get(t.opener).push(t);
+  for (const tc of spec) {
+    if (!specGroups.has(tc.opener)) specGroups.set(tc.opener, []);
+    specGroups.get(tc.opener).push(tc);
   }
   document.getElementById('speculative').innerHTML = spec.length === 0
-    ? '<div class="quiet">no rehearsed work</div>'
+    ? `<div class="quiet">${t('noRehearsed')}</div>`
     : [...specGroups.entries()]
         .sort((a, b) => Math.max(...b[1].map(t => t.id)) - Math.max(...a[1].map(t => t.id)))
         .map(([opener, ts]) => {
@@ -289,7 +392,7 @@ async function render() {
     persons.set(who, p);
   }
   document.getElementById('persons').innerHTML = persons.size === 0
-    ? '<div class="quiet">no tickets yet</div>'
+    ? `<div class="quiet">${t('noTickets')}</div>`
     : [...persons.entries()].map(([who, p]) => {
         const counts = ['queued', 'working', 'needs-person', 'ended']
           .map(st => p.tickets.filter(t => t.stage === st).length)
@@ -298,17 +401,17 @@ async function render() {
         const fu = p.tickets.reduce((n, t) => n + (t.followUps || 0), 0);
         const fuTag = fu > 0 ? ` · <span class="quiet">follow-ups:${fu}</span>` : '';
         const dels = p.deliveries.map(d => `PR #${d.prNumber} ${d.state}`).join(' · ');
-        return `<div class="card"><b>${esc(who)}</b> — ${counts || 'no open work'}${fuTag}${dels ? `<div class="quiet">${dels}</div>` : ''}</div>`;
+        return `<div class="card"><b>${esc(who)}</b> — ${counts || t('noOpenWork')}${fuTag}${dels ? `<div class="quiet">${dels}</div>` : ''}</div>`;
       }).join('');
 
   const aps = s.approvals || [];
   document.getElementById('approvals').innerHTML = aps.length === 0
-    ? '<div class="quiet">no approval requests waiting</div>'
+    ? `<div class="quiet">${t('noApprovals')}</div>`
     : aps.map(a => {
         const ageH = (Date.now() - new Date(a.createdAt).getTime()) / 3.6e6;
-        const stale = ageH > 48 ? ` <span class="badge b-shadow" title="older than 48h — check whether the thread moved on">stale ${Math.floor(ageH / 24)}d</span>` : '';
+        const stale = ageH > 48 ? ` <span class="badge b-shadow" title="${esc(t('staleTitle'))}">${t('stale')} ${Math.floor(ageH / 24)}d</span>` : '';
         return `<div class="card"><span class="badge b-person">${esc(a.kind)}</span>
-        ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ops thread · since ${fmt(a.createdAt)}${stale}</div>`;
+        ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ${t('opsThread')} · ${t('since')} ${fmt(a.createdAt)}${stale}</div>`;
       }).join('');
 
   // v1.5 slice C — live topology, hand-rolled SVG (zero deps, like everything here)
@@ -343,34 +446,34 @@ async function render() {
     const ver = await api('/api/events/verify');
     const el = document.getElementById('ledgerVerify');
     el.innerHTML = ver.ok
-      ? `<span class="badge b-accept">chain intact</span> <span class="quiet">${ver.count} events · hash-chained · <a href="#" onclick="verifyNow();return false">re-verify</a></span>`
-      : `<span class="badge b-ignore">CHAIN BROKEN</span> <span class="quiet">${esc(ver.reason)} (event #${ver.firstBadId})</span>`;
+      ? `<span class="badge b-accept">${t('chainIntact')}</span> <span class="quiet">${ver.count} ${t('eventsChained')} <a href="#" onclick="verifyNow();return false">${t('reverify')}</a></span>`
+      : `<span class="badge b-ignore">${t('chainBroken')}</span> <span class="quiet">${esc(ver.reason)} (event #${ver.firstBadId})</span>`;
   } catch { /* ledger section is best-effort */ }
 
   const mem = s.memory || { counts: {}, recent: [] };
   const memTotal = (mem.counts.accepted || 0) + (mem.counts.candidate || 0);
   document.getElementById('memory').innerHTML = memTotal === 0
-    ? '<div class="quiet">no distilled memories — two-tier memory is off or nothing completed yet</div>'
+    ? `<div class="quiet">${t('noMemory')}</div>`
     : `<div class="quiet">accepted ${mem.counts.accepted || 0} · candidates (would-inject, observe) ${mem.counts.candidate || 0} · rejected ${mem.counts.rejected || 0}</div>` +
       (mem.recent || []).map(m => `<div class="card"><span class="badge ${m.status === 'accepted' ? 'b-accept' : 'b-shadow'}">${esc(m.status)}</span>
           ${esc(m.body)}<div class="quiet">— ticket #${m.sourceTicket} · ${esc(m.repo)}</div></div>`).join('');
 
   const rt = s.routines || { enabled: false, items: [] };
   document.getElementById('routines').innerHTML = !rt.enabled
-    ? '<div class="quiet">the clock is off — policy.routines absent or disabled (nothing fires by default)</div>'
+    ? `<div class="quiet">${t('clockOff')}</div>`
     : rt.items.length === 0
-      ? '<div class="quiet">enabled, no definitions</div>'
-      : rt.items.map(r => `<div class="card"><span class="badge ${r.overdue ? 'b-shadow' : 'b-accept'}">${r.overdue ? 'overdue' : 'scheduled'}</span>
+      ? `<div class="quiet">${t('noRoutines')}</div>`
+      : rt.items.map(r => `<div class="card"><span class="badge ${r.overdue ? 'b-shadow' : 'b-accept'}">${r.overdue ? t('overdue') : t('scheduled')}</span>
           <b>${esc(r.id)}</b> ${esc(r.schedule)} → ${esc(threadShort(r.reportTo))}
-          <span class="quiet">next ${esc(r.next)}${r.overdue ? ' — catch-up fires on the next sweep' : ''}</span></div>`).join('');
+          <span class="quiet">${t('next')} ${esc(r.next)}${r.overdue ? ` — ${t('catchup')}` : ''}</span></div>`).join('');
 
   const deliveries = s.deliveries || [];
   const mergeOn = !!(s.policy && s.policy.merge && s.policy.merge.enabled);
   document.getElementById('deliveries').innerHTML = deliveries.length === 0
-    ? '<div class="quiet">no pull requests opened</div>'
+    ? `<div class="quiet">${t('noPRs')}</div>`
     : deliveries.map(d => {
         const cls = d.state === 'merged' ? 'b-accept' : d.state === 'closed' ? 'b-ignore' : 'b-shadow';
-        const note = d.state === 'open' ? (mergeOn ? 'awaiting merge requirements' : 'auto-merge off (policy.merge)') : '';
+        const note = d.state === 'open' ? (mergeOn ? t('awaitingMerge') : t('autoMergeOff')) : '';
         return `<div class="card"><span class="badge ${cls}">${d.state}</span>
           PR #${esc(d.prNumber)} ${esc(d.branch)} · ticket #${d.ticketId}
           <span class="quiet">${esc(note)}</span></div>`;
@@ -378,7 +481,7 @@ async function render() {
 
   const shadows = s.decisions.filter(d => d.wouldAccept);
   document.getElementById('shadows').innerHTML = shadows.length === 0
-    ? '<div class="quiet">no shadow records</div>'
+    ? `<div class="quiet">${t('noShadows')}</div>`
     : shadows.map(d => `<div class="card"><span class="badge b-shadow">would accept</span>
         ${fmt(d.ts)} ${esc(d.author)} → ${esc(threadShort(d.threadId))}
         <div class="quiet">${esc(d.basis)}</div>
@@ -396,12 +499,12 @@ async function render() {
   const doc = s.doctor;
   const icon = { ok: '✓', warn: '!', fail: '✗', info: '—' };
   document.getElementById('doctor').innerHTML = !doc
-    ? '<div class="quiet">not wired — start via dsh watch or dsh panel to embed the checks</div>'
+    ? `<div class="quiet">${t('doctorNotWired')}</div>`
     : doc.checks.filter(c => c.status === 'warn' || c.status === 'fail')
         .map(c => `<div class="warnstrip${c.status === 'fail' ? ' fail' : ''}">${c.status === 'fail' ? '✗' : '⚠'} ${esc(c.line)}</div>`).join('')
       + doc.checks.filter(c => c.status !== 'warn' && c.status !== 'fail')
         .map(c => `<div class="dcheck"><span class="ic ${c.status}">${icon[c.status] || '·'}</span>${esc(c.line)}</div>`).join('')
-      + `<div class="quiet">${doc.failures > 0 ? doc.failures + ' failure' + (doc.failures === 1 ? '' : 's') + ', ' : ''}${doc.warnings > 0 ? doc.warnings + ' warning' + (doc.warnings === 1 ? '' : 's') : ''}${doc.failures === 0 && doc.warnings === 0 ? 'all clean' : ''} · exit ${doc.exitCode} · offline facts, cached 60s</div>`;
+      + `<div class="quiet">${doc.failures > 0 ? doc.failures + ' ' + (doc.failures === 1 ? t('failure') : t('failures')) + ', ' : ''}${doc.warnings > 0 ? doc.warnings + ' ' + (doc.warnings === 1 ? t('warning') : t('warnings')) : ''}${doc.failures === 0 && doc.warnings === 0 ? t('allClean') : ''} · exit ${doc.exitCode} · ${t('offlineFacts')}</div>`;
 }
 
 async function auditTrigger(row, id) {
@@ -433,18 +536,18 @@ async function auditTicket(row, id) {
   row.after(div);
 }
 async function setMode(mode) {
-  if (mode === 'auto' && !confirm('auto accepts inferred work after assessment, without further review.\n\nStart in observe and review records first (docs/002). Switch to auto?')) return;
-  if (mode === 'off' && !confirm('off rejects all inferred candidates. Explicit requests still work. Switch?')) return;
+  if (mode === 'auto' && !confirm(t('confirmAuto'))) return;
+  if (mode === 'off' && !confirm(t('confirmOff'))) return;
   await api('/api/mode', { mode });
   render();
 }
 async function promoteTicket(id) {
-  if (!confirm('Promote speculative ticket #' + id + '?\nThe rehearsed work will be pushed and a PR opened — the human deliver gate.')) return;
+  if (!confirm(t('confirmPromote')(id))) return;
   await api('/api/promote', { id });
   render();
 }
 async function stopTicket(id) {
-  if (!confirm('End ticket #' + id + '? (a person\u2019s stop withdraws its mandate)')) return;
+  if (!confirm(t('confirmStop')(id))) return;
   await api('/api/stop', { id });
   render();
 }

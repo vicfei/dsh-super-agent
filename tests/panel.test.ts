@@ -7,6 +7,7 @@ import type { Policy, Trigger } from "../src/domain.js";
 import { Engine } from "../src/engine.js";
 import { evaluateGate, resolveCandidate } from "../src/gate.js";
 import { startPanel } from "../src/panel.js";
+import http from "node:http";
 import type { Server } from "node:http";
 
 let dir: string;
@@ -309,5 +310,57 @@ describe("topology state (v1.5 slice C)", () => {
     const st = (await (await fetch(base + "/api/state")).json()) as { sources: string[]; gateStats: { accept: number; ignore: number; wouldAccept: number } };
     expect(st.sources).toContain("github");
     expect(st.gateStats.accept).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("shutdown ordering (#144)", () => {
+  // The live failure: the watch daemon closed the database while the panel still served;
+  // the panel's own 3s keep-alive poll then hit the closed DB and hung SIGTERM forever.
+  it("an established keep-alive request after shutdown() gets 503, not a DB crash", async () => {
+    const agent = new http.Agent({ keepAlive: true });
+    const port = (server.address() as AddressInfo).port; // capture before close() nulls it
+    const req = (path: string) => new Promise<number>((resolve, reject) => {
+      const r = http.request({ host: "127.0.0.1", port, path, agent }, (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode ?? 0));
+      });
+      r.on("error", reject);
+      r.end();
+    });
+    expect(await req("/api/state")).toBe(200); // open + warm the keep-alive socket
+    server.shutdown(); // panel drains first — exactly the new CLI ordering
+    // Node's close() destroys an idle keep-alive socket on its next request (verified against
+    // Node 20), so the observable outcomes are: 503 (in-flight drain), ECONNRESET (reused
+    // socket), ECONNREFUSED (new socket). The contract under test: NEVER a 500 from the
+    // closed-database throw, and never a hang.
+    let outcome: number | string = "unknown";
+    try { outcome = await req("/api/state"); } catch (e) { outcome = (e as NodeJS.ErrnoException).code ?? "error"; }
+    expect([503, "ECONNRESET", "ECONNREFUSED"]).toContain(outcome);
+    agent.destroy();
+  });
+
+  it("the watch ordering — shutdown() then engine.close() — leaves no crash path", async () => {
+    const { Engine } = await import("../src/engine.js");
+    const dir2 = mkdtempSync(join(tmpdir(), "dsh-panel-144-"));
+    const engine2 = new Engine(join(dir2, "engine2.db"));
+    engine2.setPolicyIfChanged(policy);
+    const server2 = await startPanel(engine2, 0);
+    const port2 = (server2.address() as AddressInfo).port;
+    server2.shutdown(); // panel drains first…
+    engine2.close(); // …then the database goes, exactly like the CLI finally-close
+    // A NEW connection is refused outright (listener gone); an established one 503s.
+    // Either way: never a 500 from a closed-database throw, and never a hang.
+    let outcome: "refused" | "503" | "bad" = "bad";
+    try {
+      const res = await fetch(`http://127.0.0.1:${port2}/api/state`);
+      await res.text();
+      outcome = res.status === 503 ? "503" : "bad";
+    } catch {
+      outcome = "refused";
+    }
+    expect(outcome === "refused" || outcome === "503").toBe(true);
+    await new Promise((r) => setTimeout(r, 30));
+    server2.closeAllConnections();
+    rmSync(dir2, { recursive: true, force: true });
   });
 });

@@ -40,6 +40,16 @@
   .rcard { border-left: 3px solid #30363d; padding: 6px 10px; margin: 6px 0; font-size: 13px; }
 .k-decision { border-left-color: #d29922; } .k-ticket { border-left-color: #2f81f7; }
 .k-policy, .k-engine { border-left-color: #8957e5; } .k-approval { border-left-color: #3fb950; }
+details.specgroup { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0; margin-bottom: 8px; }
+details.specgroup summary { cursor: pointer; padding: 10px 12px; list-style: none; color: #c9d1d9; }
+details.specgroup summary::before { content: '▸ '; color: #8b949e; }
+details.specgroup[open] summary::before { content: '▾ '; }
+details.specgroup[open] summary { border-bottom: 1px solid #21262d; }
+details.specgroup .card { margin: 8px; border-style: dashed; }
+.warnstrip { background: #161b22; border: 1px solid #d2992266; border-left: 3px solid #d29922; border-radius: 6px;
+             padding: 8px 12px; margin-bottom: 6px; color: #e3b341; }
+.warnstrip.fail { border-color: #f8514966; border-left-color: #f85149; color: #f85149; }
+.eras { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
 .streamctl { display: flex; gap: 10px; align-items: center; margin: 6px 0; font-size: 12px; }
 .streamctl select, .streamctl input { background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; padding: 2px 6px; }
 footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
@@ -71,6 +81,10 @@ footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
 <h2>Awaiting a human</h2>
 <div id="awaiting"></div>
 
+<h2>Rehearsed — speculative backlog</h2>
+<div class="quiet" style="margin:-4px 0 8px">rehearsal only: shadow-accepted work waiting for a person to promote — collapses by opener</div>
+<div id="speculative"></div>
+
 <h2>Topology — the machine at a glance</h2>
 <div id="topology"></div>
 
@@ -78,6 +92,7 @@ footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
 <div id="persons"></div>
 
 <h2>Pending approvals (IM)</h2>
+<div class="quiet" style="margin:-4px 0 8px">approval digits ride the ops IM route — the channel prefix on each card (e.g. wechat) says where to reply</div>
 <div id="approvals"></div>
 
 <h2>Routines — the clock</h2>
@@ -197,41 +212,66 @@ async function renderReview() {
     const mark = s.autoGranted ? '🟢 <b>AUTO GRANTED</b> — ' : '';
     return `<div class="rcard">${mark}<b>${esc(s.scope)}</b> — ${s.shadows} shadows${stale} · ${s.threads} threads · ${s.autoAccepts} auto-accepts · ${s.assessorNegatives} rejections → <b>${SUG[s.suggestion] ?? s.suggestion}</b>${action}</div>`;
   };
-  const eras = r.byPolicyVersion.map(p => `v${p.version}: ${p.wouldAccept}/${p.decisions}`).join(' · ');
+  const eras = r.byPolicyVersion.map(p => `<span>v${p.version}: ${p.wouldAccept}/${p.decisions}</span>`);
   document.getElementById('review').innerHTML = r.byScope.map(card).join('') +
-    `<div class="quiet">policy eras — ${esc(eras)}</div>`;
+    `<div class="quiet eras"><span>policy eras —</span>${eras.join('')}</div>`;
 }
 async function render() {
   const s = await api('/api/state');
   renderReview();
   document.getElementById('pv').textContent = s.policy ? s.policy.version : '?';
-  const mins = ms => ms === null ? '—' : Math.round(ms / 60000) + 'm';
+  // adaptive units — raw minutes read as noise past an hour (live audit: "12131m")
+  const mins = ms => {
+    if (ms === null) return '—';
+    const m = ms / 60000;
+    return m < 90 ? `${Math.round(m)}m` : m < 2880 ? `${(m / 60).toFixed(1)}h` : `${(m / 1440).toFixed(1)}d`;
+  };
   const h = s.health || { tickets: {}, effects: {} };
   document.getElementById('health').innerHTML =
-    `queued ${h.tickets.queued ?? 0} · working ${h.tickets.working ?? 0} · needs-person ${h.tickets['needs-person'] ?? 0} · ended ${h.tickets.ended ?? 0}` +
+    `queued ${h.tickets.queued ?? 0} · working ${h.tickets.working ?? 0} · <span title="tickets blocked on a human decision — see Awaiting a human">needs-person ${h.tickets['needs-person'] ?? 0}</span> · ended ${h.tickets.ended ?? 0}` +
     ` · effects pending ${h.pendingEffects ?? 0} / failed ${h.failedEffects ?? 0}` +
     ` · oldest working ${mins(h.oldestWorkingMs)} · oldest needs-person ${mins(h.oldestNeedsPersonMs)}`;
   document.querySelectorAll('#modes button').forEach(b => {
-    b.classList.toggle('on', s.policy && b.dataset.mode === s.policy.acceptMode);
+    const on = !!(s.policy && b.dataset.mode === s.policy.acceptMode);
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
   });
   document.getElementById('modehint').textContent =
     s.policy && s.policy.acceptMode === 'auto' ? '' : ' — inferred candidates do not run in this mode';
 
   const spec = s.tickets.filter(t => t.speculative);
-  const specCards = spec.map(t => `<div class="card click" onclick="auditTicket(this, ${t.id})"><span class="badge b-shadow">speculative</span>
-          ticket #${t.id} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)} — rehearsed silently
-          <button class="stop" style="color:#3fb950;border-color:#3fb95066" onclick="event.stopPropagation(); promoteTicket(${t.id})">promote</button> · click for run history</div>`).join('');
   const personTickets = s.tickets.filter(t => t.stage === 'needs-person');
   const revoked = s.tickets.filter(t => t.revokedReason);
+  // needs-person and revoked are the cards that truly block on a person — they come first.
+  // The speculative flood rehearses silently; it collapses by opener below (audit: a 67-card
+  // morning-digest wall buried the one card that mattered).
   document.getElementById('awaiting').innerHTML =
-    (personTickets.length === 0 && revoked.length === 0 && spec.length === 0)
-      ? '<div class="quiet">nothing needs you</div>'
-      : specCards
-        + personTickets.map(t => `<div class="card click" onclick="auditTicket(this, ${t.id})"><span class="badge b-person">needs-person</span>
+    (personTickets.length === 0 && revoked.length === 0)
+      ? `<div class="quiet">${spec.length ? 'no ticket needs a decision — the backlog below is rehearsal only' : 'nothing needs you'}</div>`
+      : personTickets.map(t => `<div class="card click" onclick="auditTicket(this, ${t.id})"><span class="badge b-person">needs-person</span>
           ticket #${t.id} ${esc(t.strength)} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)}
           <button class="stop" onclick="event.stopPropagation(); stopTicket(${t.id})">stop</button> · click for run history</div>`).join('')
         + revoked.map(t => `<div class="card"><span class="badge b-ignore">revoked</span>
           ticket #${t.id} — ${esc(t.revokedReason)}</div>`).join('');
+
+  const specCard = t => `<div class="card click" onclick="auditTicket(this, ${t.id})"><span class="badge b-shadow">speculative</span>
+          ticket #${t.id} ${esc(threadShort(t.threadId))} opener=${esc(t.opener)} — rehearsed silently
+          <button class="stop" style="color:#3fb950;border-color:#3fb95066" onclick="event.stopPropagation(); promoteTicket(${t.id})">promote</button> · click for run history</div>`;
+  const specGroups = new Map();
+  for (const t of spec) {
+    if (!specGroups.has(t.opener)) specGroups.set(t.opener, []);
+    specGroups.get(t.opener).push(t);
+  }
+  document.getElementById('speculative').innerHTML = spec.length === 0
+    ? '<div class="quiet">no rehearsed work</div>'
+    : [...specGroups.entries()]
+        .sort((a, b) => Math.max(...b[1].map(t => t.id)) - Math.max(...a[1].map(t => t.id)))
+        .map(([opener, ts]) => {
+          const threads = [...new Set(ts.map(t => threadShort(t.threadId)))];
+          const shown = threads.slice(0, 2).join(', ') + (threads.length > 2 ? ` (+${threads.length - 2})` : '');
+          return `<details class="specgroup"><summary><span class="badge b-shadow">× ${ts.length}</span> opener=${esc(opener)}
+            <span class="quiet">· ${esc(shown)}</span></summary>${ts.slice().sort((a, b) => b.id - a.id).map(specCard).join('')}</details>`;
+        }).join('');
 
   // By person (M6-3): the opener is who the work is *for* — one card per person with their
   // stage counts and where their delivered PRs stand.
@@ -264,8 +304,12 @@ async function render() {
   const aps = s.approvals || [];
   document.getElementById('approvals').innerHTML = aps.length === 0
     ? '<div class="quiet">no approval requests waiting</div>'
-    : aps.map(a => `<div class="card"><span class="badge b-person">${esc(a.kind)}</span>
-        ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ops thread · since ${fmt(a.createdAt)}</div>`).join('');
+    : aps.map(a => {
+        const ageH = (Date.now() - new Date(a.createdAt).getTime()) / 3.6e6;
+        const stale = ageH > 48 ? ` <span class="badge b-shadow" title="older than 48h — check whether the thread moved on">stale ${Math.floor(ageH / 24)}d</span>` : '';
+        return `<div class="card"><span class="badge b-person">${esc(a.kind)}</span>
+        ticket #${a.ticketId} → ${esc(a.opsThread.split(':')[0])} ops thread · since ${fmt(a.createdAt)}${stale}</div>`;
+      }).join('');
 
   // v1.5 slice C — live topology, hand-rolled SVG (zero deps, like everything here)
   try {
@@ -282,7 +326,7 @@ async function render() {
     const srcNodes = (srcs.slice(0, 6).length ? srcs.slice(0, 6) : ['(none)']).map((n, i) =>
       box(58 + (i % 3) * 118, n, 'source', false)).join('');
     const gate = box(430, 'gate', `${g.accept + g.wouldAccept + g.ignore} decided`, g.wouldAccept > 0);
-    const tickets = box(570, 'tickets', `q${tk.queued ?? 0} · w${tk.working ?? 0} · 🔑${tk['needs-person'] ?? 0}`, (tk['needs-person'] ?? 0) > 0);
+    const tickets = box(570, 'tickets', `q${tk.queued ?? 0} w${tk.working ?? 0} 🔑${tk['needs-person'] ?? 0}`, (tk['needs-person'] ?? 0) > 0);
     const worker = box(700, 'worker', (tk.working ?? 0) > 0 ? 'running' : 'idle', (tk.working ?? 0) > 0);
     const outbox = box(830, 'outbox', `${h.pendingEffects ?? 0} pending`, (h.pendingEffects ?? 0) > 0);
     const arrow = (x1, x2) => `<line x1="${x1}" y1="${nodeY}" x2="${x2}" y2="${nodeY}" class="tp-edge${(tk.working ?? 0) > 0 ? ' tp-flow' : ''}"></line>`;
@@ -290,7 +334,7 @@ async function render() {
       `<svg viewBox="0 0 950 220" style="width:100%;max-width:950px" xmlns="http://www.w3.org/2000/svg">
          ${arrow(480, 562)}${arrow(620, 692)}${arrow(750, 822)}
          ${srcNodes}${gate}${tickets}${worker}${outbox}
-         <text x="475" y="205" text-anchor="middle" class="tp-s">armed sources → admission gate → tickets by stage → the worker → the outbox — would-accept ${g.wouldAccept}, failed effects ${h.failedEffects ?? 0}</text>
+         <text x="475" y="205" text-anchor="middle" class="tp-s">sources → gate → tickets → worker → outbox · would-accept ${g.wouldAccept} · failed effects ${h.failedEffects ?? 0}</text>
        </svg>`;
   } catch { /* topology is best-effort */ }
 
@@ -309,7 +353,7 @@ async function render() {
     ? '<div class="quiet">no distilled memories — two-tier memory is off or nothing completed yet</div>'
     : `<div class="quiet">accepted ${mem.counts.accepted || 0} · candidates (would-inject, observe) ${mem.counts.candidate || 0} · rejected ${mem.counts.rejected || 0}</div>` +
       (mem.recent || []).map(m => `<div class="card"><span class="badge ${m.status === 'accepted' ? 'b-accept' : 'b-shadow'}">${esc(m.status)}</span>
-          ${esc(m.body)} <span class="quiet">— ticket #${m.sourceTicket} · ${esc(m.repo)}</span></div>`).join('');
+          ${esc(m.body)}<div class="quiet">— ticket #${m.sourceTicket} · ${esc(m.repo)}</div></div>`).join('');
 
   const rt = s.routines || { enabled: false, items: [] };
   document.getElementById('routines').innerHTML = !rt.enabled
@@ -353,7 +397,10 @@ async function render() {
   const icon = { ok: '✓', warn: '!', fail: '✗', info: '—' };
   document.getElementById('doctor').innerHTML = !doc
     ? '<div class="quiet">not wired — start via dsh watch or dsh panel to embed the checks</div>'
-    : doc.checks.map(c => `<div class="dcheck"><span class="ic ${c.status}">${icon[c.status] || '·'}</span>${esc(c.line)}</div>`).join('')
+    : doc.checks.filter(c => c.status === 'warn' || c.status === 'fail')
+        .map(c => `<div class="warnstrip${c.status === 'fail' ? ' fail' : ''}">${c.status === 'fail' ? '✗' : '⚠'} ${esc(c.line)}</div>`).join('')
+      + doc.checks.filter(c => c.status !== 'warn' && c.status !== 'fail')
+        .map(c => `<div class="dcheck"><span class="ic ${c.status}">${icon[c.status] || '·'}</span>${esc(c.line)}</div>`).join('')
       + `<div class="quiet">${doc.failures > 0 ? doc.failures + ' failure' + (doc.failures === 1 ? '' : 's') + ', ' : ''}${doc.warnings > 0 ? doc.warnings + ' warning' + (doc.warnings === 1 ? '' : 's') : ''}${doc.failures === 0 && doc.warnings === 0 ? 'all clean' : ''} · exit ${doc.exitCode} · offline facts, cached 60s</div>`;
 }
 

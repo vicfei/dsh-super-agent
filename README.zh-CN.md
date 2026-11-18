@@ -71,6 +71,20 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 3. **自家仓库的贡献机器人。** `auto` 模式 + 合并闸门下，引擎已在两个仓库交付过真实合并的 PR（deepseek-bot #109、harness-native #4）：worktree 隔离的执行器、测试不过拒交付的红门 worker、PR 标题卫生，哈希链账本即审计轨迹。
 4. **定时报告引擎。** 第四个实例以 `auto` + 仅 PR 交付运行：routines 从一组 agent 窗口的 git 原生任务/会话日志拉取素材，把日/周/月报作为 pull request 开出来交人审——引擎起草，主人合并。
 
+## 信任控制台——赢得的自主长什么样
+
+`dsh watch` 在本地起一个控制台（无云、无账号），把本页所有主张摆到你眼前：
+
+![信任控制台工作台：顶部一张等人拍板的卡，预演积压按 opener 折叠，下面是实时拓扑轨](docs/screenshots/02-awaiting-speculative.png)
+
+健康状态不占版面：没事找你时，顶部一节就这么说。上面的工作是真实的——一张工单等人决策，其余全部在折叠组后面静默预演（那个 `× 62` 是某个 opener 的晨报积压——在账上、有证据，但不糊你一脸）。拓扑条显示流水线的真实状态，健康行用人类可读的单位（`oldest needs-person 8.5d`）。
+
+![证据：带时间线轨道的实时哈希链事件流](docs/screenshots/04-evidence-ledger.png)
+
+证据流就是 `dsh events verify` 走的那条账本：每条决策、工单、策略变更都以哈希链行落账——可暂停、可按类型或线程过滤、点徽章当场重验整条链。
+
+晋升台（`dsh review`，同一控制台）把证据变成按范围的决策——scope 卡带按策略纪元拆分的影子计数、hold/insufficient/auto-candidate 建议、以及一个先展示精确策略 diff 再动版本的授权链接。[整页视图](docs/screenshots/01-full-page.png)。
+
 ## 当前状态
 
 下表每一行都已接线、有离线测试覆盖(290 个),并跑在本仓库自己的狗粮守护进程上:

@@ -72,6 +72,20 @@ All four run live today on the maintainer's fleet — none is hypothetical:
 3. **A contribution bot for your own repos.** In `auto` mode with the merge gate on, the engine has delivered real merged PRs on two repos (deepseek-bot #109, harness-native #4): worktree-isolated executor, red-gated worker that refuses to deliver on failing tests, PR title hygiene, and the hash-chained ledger as the audit trail.
 4. **A scheduled report engine.** A fourth instance runs in `auto` with PR-only delivery: routines pull git-native task/session logs from a fleet of agent windows and open a daily/weekly/monthly report as a pull request for human review — the engine drafts, the owner merges.
 
+## The trust console — what earned autonomy looks like
+
+`dsh watch` serves a local console (no cloud, no account) that puts every claim on this page in front of your eyes:
+
+![The trust console workbench: one card awaiting a human on top, the rehearsal backlog collapsed by opener, and the live topology rail](docs/screenshots/02-awaiting-speculative.png)
+
+Healthy state takes no space: when nothing needs you, the top section says so. The work above is real — one ticket blocked on a person, everything else rehearsed silently behind collapsed groups (the `× 62` is one opener's morning-digest backlog — present, evidenced, but not in your face). The topology strip shows the actual pipeline state, and the health line reads in human units (`oldest needs-person 8.5d`).
+
+![Evidence: a live, hash-chained event stream with a timeline rail](docs/screenshots/04-evidence-ledger.png)
+
+The evidence stream is the same ledger `dsh events verify` walks: every decision, ticket and policy change lands as a hash-chained row — pause it, filter by kind or thread, or click the badge to re-verify the whole chain on the spot.
+
+The promotion desk (`dsh review`, same console) turns that evidence into per-scope decisions — scope cards with shadow counts split by policy era, hold/insufficient/auto-candidate suggestions, and a grant link whose click shows the exact policy diff before it versions. [Full-page view](docs/screenshots/01-full-page.png).
+
 ## Status
 
 Every row below is wired, offline-tested (290 tests), and running on this repo's own dogfood daemon:

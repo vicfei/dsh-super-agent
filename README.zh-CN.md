@@ -60,7 +60,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | Codex (`codex`) | v0 目标 |
 | opencode / Gemini CLI / aider / 自定义脚本 | 配置驱动,v0 |
 
-评估层自带模型即可:任意 OpenAI 兼容 `/chat/completions` 端点都能用。
+评估层自带模型即可:任意 OpenAI 兼容 `/chat/completions` 端点都能用。或者自带**裁判**（`--assessment decision`）：慢通道改读端点 top-logprobs 上 `admit`/`reject` 的概率质量而非采样文本——任何模型都能当决策模型；每条裁决带置信度落账（`· piccolo-27b 0.91`），`dsh review` 汇报各裁判的裁决构成与平均置信度。换裁判只是配置变更，不是治理变更。
 
 ## 实际应用场景
 

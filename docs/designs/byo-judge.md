@@ -35,5 +35,5 @@ decision model becomes dsh's assess layer.
 ## Open items (pre-implementation)
 
 - [ ] Piccolo endpoint access (ModelScope free tier feasibility — sibling window owns the probe)
-- [ ] Envelope schema: one page, verified against the generated Cordis catalog
-- [ ] Score threshold policy: per-scope floor (default 0.5, policy-tunable)
+- [x] Envelope schema: the universal adapter is OpenAI-compatible `/chat/completions` + `logprobs` (top_logprobs of the first generated token = probability mass over candidates) — any model qualifies; a native decision endpoint (Piccolo `/v1/systemone`) slots in behind `DecisionAssessorOptions` once probed (v1.7)
+- [x] Score threshold: `--judge-threshold` / `JUDGE_THRESHOLD`, default 0.5 — engine-global in v1.7; per-scope floor deferred until a live judge shows the need

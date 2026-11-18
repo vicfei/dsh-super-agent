@@ -61,7 +61,7 @@ Any command line counts as a Worker. Per-ticket worktree, per-ticket environment
 | Codex (`codex`) | v0 target |
 | opencode / Gemini CLI / aider / custom scripts | config-driven, v0 |
 
-Bring your own model for the assessment layer: any OpenAI-compatible `/chat/completions` endpoint works.
+Bring your own model for the assessment layer: any OpenAI-compatible `/chat/completions` endpoint works. Or bring your own **judge** (`--assessment decision`): the slow path reads probability mass over `admit`/`reject` from the endpoint's top-logprobs instead of sampled text — any model becomes a decision model, every verdict lands in the ledger with its confidence (`· piccolo-27b 0.91`), and `dsh review` reports each judge's verdict mix and mean confidence. A judge swap is a config change, not a governance change.
 
 ## Real-world use cases
 

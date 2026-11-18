@@ -316,8 +316,10 @@ async function renderReview() {
     return `<div class="rcard">${mark}<b>${esc(s.scope)}</b> — ${s.shadows} shadows${stale} · ${s.threads} threads · ${s.autoAccepts} auto-accepts · ${s.assessorNegatives} rejections → <b>${SUG[s.suggestion] ?? s.suggestion}</b>${action}</div>`;
   };
   const eras = r.byPolicyVersion.map(p => `<span>v${p.version}: ${p.wouldAccept}/${p.decisions}</span>`);
+  const judges = (r.byJudge || []).map(j2 => `<span>${esc(j2.judge)}: ${j2.positive}↑/${j2.negative}↓ μ${j2.meanScore ?? "—"}</span>`);
   document.getElementById('review').innerHTML = r.byScope.map(card).join('') +
-    `<div class="quiet eras"><span>policy eras —</span>${eras.join('')}</div>`;
+    `<div class="quiet eras"><span>policy eras —</span>${eras.join('')}</div>` +
+    (judges.length ? `<div class="quiet eras"><span>judges —</span>${judges.join('')}</div>` : '');
 }
 async function render() {
   const s = await api('/api/state');

@@ -9,7 +9,7 @@ import type { ReplyChannel, Source, SourceState } from "./source.js";
 import type { Executor } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
 import { interceptApprovalCommands, runApprovalSweep } from "./approval.js";
-import { evaluateGate } from "./gate.js";
+import { evaluateGate, type Assessment } from "./gate.js";
 import { memoryPolicyOf } from "./domain.js";
 import type { MemoryDistiller } from "./memory.js";
 import { runMergeSweep } from "./merge.js";
@@ -17,7 +17,7 @@ import { runWatchdogSweep } from "./watchdog.js";
 import { classify, formatOutcome } from "./runner.js";
 import { runPromoteSweep, runWork, type WorkMemory } from "./work.js";
 
-export type AssessmentFn = (t: Trigger) => Promise<"positive" | "negative"> | "positive" | "negative";
+export type AssessmentFn = (t: Trigger) => Promise<Assessment> | Assessment;
 
 export interface WatchOptions {
   engine: Engine;
@@ -75,8 +75,8 @@ async function runCycle(opts: WatchOptions, log: (l: string) => void): Promise<b
   // Trigger batching (v0.9-3, issue #62): same-thread follow-ups bypass into one ticket, so the
   // Slow Path runs once per thread — on the first inferred trigger — and later inferred triggers
   // of that thread reuse the verdict. Explicit triggers never consult the Slow Path (docs/002).
-  const verdictByThread = new Map<string, "positive" | "negative">();
-  const assess = async (t: Trigger): Promise<"positive" | "negative"> => {
+  const verdictByThread = new Map<string, Assessment>();
+  const assess = async (t: Trigger): Promise<Assessment> => {
     const gate = evaluateGate(policy, t);
     if (gate.strength !== "inferred") return "positive";
     const cached = verdictByThread.get(t.threadId);

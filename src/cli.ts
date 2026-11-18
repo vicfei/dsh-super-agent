@@ -11,6 +11,7 @@ import { classify, formatOutcome } from "./runner.js";
 import { evaluateGate } from "./gate.js";
 import type { Assessor } from "./assess.js";
 import { llmAssessor, stubAssessor } from "./assess.js";
+import { decisionAssessor } from "./judge.js";
 import { llmDistiller } from "./memory.js";
 import { GitHubClient } from "./github/client.js";
 import { AppTokenProvider, appAuthFromEnv } from "./github/app-auth.js";
@@ -52,9 +53,13 @@ function parseOrDie() {
         config: { type: "string", default: "policy.json" },
         "executor-config": { type: "string", default: "executor.json" },
         db: { type: "string", default: ".state/engine.db" },
-        assessment: { type: "string", default: "stub-positive" }, // stub-positive | stub-negative | llm
+        assessment: { type: "string", default: "stub-positive" }, // stub-positive | stub-negative | llm | decision
         "assess-base-url": { type: "string" },
         "assess-model": { type: "string" },
+        // BYO-judge (#133): decision models as the slow-path assessor
+        "judge-base-url": { type: "string" },
+        "judge-model": { type: "string" },
+        "judge-threshold": { type: "string" },
         interval: { type: "string" },
         "no-panel": { type: "boolean", default: false },
         token: { type: "string" },
@@ -222,6 +227,24 @@ function loadExecutorConfig(): ExecutorConfig {
 }
 
 function buildAssessor(): Assessor {
+  if (args.assessment === "decision") {
+    // BYO-judge (#133): judge flags win, then JUDGE_* env, then the assess endpoint
+    // (one endpoint, two judgment styles is a legitimate setup).
+    const baseUrl = args["judge-base-url"] ?? process.env.JUDGE_BASE_URL ?? process.env.ASSESS_BASE_URL;
+    if (!baseUrl) die(`--assessment decision requires --judge-base-url or JUDGE_BASE_URL (falls back to ASSESS_BASE_URL)${WITH_HELP}`);
+    const model = args["judge-model"] ?? process.env.JUDGE_MODEL ?? process.env.ASSESS_MODEL ?? "";
+    const thresholdStr = args["judge-threshold"] ?? process.env.JUDGE_THRESHOLD;
+    const threshold = thresholdStr === undefined ? undefined : Number(thresholdStr);
+    if (threshold !== undefined && (!Number.isFinite(threshold) || threshold < 0 || threshold > 1)) {
+      die(`--judge-threshold must be within [0, 1] (got ${thresholdStr})${WITH_HELP}`);
+    }
+    return decisionAssessor({
+      baseUrl,
+      model,
+      apiKey: process.env.JUDGE_API_KEY ?? process.env.ASSESS_API_KEY ?? process.env.OPENAI_API_KEY,
+      ...(threshold !== undefined ? { threshold } : {}),
+    });
+  }
   if (args.assessment !== "llm") {
     return stubAssessor(args.assessment === "stub-negative" ? "negative" : "positive");
   }

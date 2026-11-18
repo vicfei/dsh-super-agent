@@ -1,3 +1,15 @@
+## 1.7.0 — bring your own judge
+
+- `--assessment decision` (#133): the slow path reads probability mass over `admit`/`reject`
+  from any OpenAI-compatible endpoint's top-logprobs instead of sampled text. Fails closed
+  like every assessor: endpoint error, missing mass, or off-candidate tokens → negative.
+- Scored verdicts land in the decision basis (`· <judge> <score>`); `dsh review` gains a
+  judges section (verdict mix + mean P(admit) per judge) and the panel renders it.
+- `--judge-base-url/-model/-threshold` (+ `JUDGE_*` env, falling back to `ASSESS_*`) —
+  a judge swap is a config change, not a governance change.
+- Panel: bilingual UI (en/zh toggle, persisted; domain terms stay English by design) and
+  the #144 shutdown-ordering fix (watch drains the panel before the database closes).
+
 # Changelog
 
 ## v1.6.0 — the earned-autonomy release

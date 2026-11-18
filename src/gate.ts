@@ -75,7 +75,20 @@ function evaluateGateInner(policy: Policy, trigger: Trigger): GateResult {
     : { strength: null, basis: `unlisted ${trigger.author.login} not admitted by cell` };
 }
 
-export type Assessment = "positive" | "negative";
+/** The slow path's verdict. Plain strings for the stub/llm assessors; a scored object for
+ *  decision-model judges (#133) — the score lands in the decision row's basis so `dsh review`
+ *  can report per-judge confidence without schema churn anywhere else. */
+export type Assessment = "positive" | "negative" | { verdict: "positive" | "negative"; score?: number; judge?: string };
+
+export function assessmentVerdict(a: Assessment): "positive" | "negative" {
+  return typeof a === "string" ? a : a.verdict;
+}
+
+export function assessmentBasisSuffix(a: Assessment): string {
+  if (typeof a === "string") return "";
+  const s = typeof a.score === "number" && Number.isFinite(a.score) ? a.score.toFixed(2) : null;
+  return s === null ? "" : ` · ${a.judge ?? "judge"} ${s}`;
+}
 
 export type Resolution =
   | { action: "accept"; strength: Strength; basis: string }
@@ -105,8 +118,8 @@ export function resolveCandidate(
   if (assessment === undefined) {
     throw new Error("inferred candidate cannot be resolved without an assessment (direct accept refused)");
   }
-  if (assessment === "negative") {
-    return { action: "reject", basis: `inferred candidate assessed negative (${gate.basis})` };
+  if (assessmentVerdict(assessment) === "negative") {
+    return { action: "reject", basis: `inferred candidate assessed negative (${gate.basis}${assessmentBasisSuffix(assessment)})` };
   }
 
   // v1.6 rungs: a per-scope acceptMode override beats the engine's global mode.
@@ -116,8 +129,8 @@ export function resolveCandidate(
     case "off":
       return { action: "reject", basis: "inferred strength has no effect while acceptMode is off" };
     case "observe":
-      return { action: "shadow", strength: "inferred", basis: gate.basis, wouldAccept: true };
+      return { action: "shadow", strength: "inferred", basis: gate.basis + assessmentBasisSuffix(assessment), wouldAccept: true };
     case "auto":
-      return { action: "accept", strength: "inferred", basis: gate.basis };
+      return { action: "accept", strength: "inferred", basis: gate.basis + assessmentBasisSuffix(assessment) };
   }
 }

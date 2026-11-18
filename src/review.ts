@@ -45,6 +45,17 @@ export interface ThreadFocus {
   lastTs: string;
 }
 
+/** Per-judge calibration summary (#133): verdict mix and mean confidence for each judge
+ *  that left scored decisions (`· <judge> <score>` in the basis). Ground-truth labeling
+ *  (promote/stop outcomes per shadow) is the follow-up that upgrades this to real ECE. */
+export interface JudgeStat {
+  judge: string;
+  positive: number;
+  negative: number;
+  /** mean P(admit) across the judge's scored decisions, rounded to 2dp; null = no scores. */
+  meanScore: number | null;
+}
+
 export interface ReviewReport {
   window: { since: string | null; until: string; scope: string | null };
   /** the policy version this engine currently runs — the era suggestions count from. */
@@ -53,6 +64,7 @@ export interface ReviewReport {
   byScope: ScopeEvidence[];
   byPolicyVersion: PolicyEra[];
   topThreads: ThreadFocus[];
+  byJudge: JudgeStat[];
 }
 
 function currentPolicyRows(engine: Engine): unknown {
@@ -127,11 +139,33 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
     GROUP BY t.thread_id ORDER BY wa DESC LIMIT 5`).all() as Record<string, unknown>[])
     .map((r) => ({ threadId: String(r.thread_id), wouldAccept: Number(r.wa), lastTs: String(r.lastTs) }));
 
+  // Judge stats from scored bases (decisionAssessor writes `· <judge> <score>`); SQL picks
+  // the suffix out, the aggregation happens here — basis format is engine-owned, one spelling.
+  const judgeRows = engine.db.prepare(`
+    SELECT
+      CASE WHEN d.basis LIKE '%· %' THEN SUBSTR(d.basis, INSTR(d.basis, '· ') + 2) ELSE '' END AS judge_raw,
+      d.would_accept,
+      d.basis
+    FROM decision d JOIN trigger t ON t.id=d.trigger_id
+    WHERE d.strength='inferred' AND d.basis LIKE '%· %' ${since} ${scope}`).all() as { judge_raw: string; would_accept: number; basis: string }[];
+  const judges = new Map<string, { positive: number; negative: number; scores: number[] }>();
+  for (const r of judgeRows) {
+    const m = /^([A-Za-z0-9._\/-]+) (0\.\d\d|1\.00)\)?$/.exec(r.judge_raw.trim()); // \)? — the negative arm wraps the suffix in parens
+    if (!m) continue; // foreign basis text that happens to contain '·' — skip, not ours
+    const j = judges.get(m[1]) ?? { positive: 0, negative: 0, scores: [] };
+    if (r.basis.includes("assessed negative")) j.negative++; else j.positive++;
+    j.scores.push(Number(m[2]));
+    judges.set(m[1], j);
+  }
+  const byJudge: JudgeStat[] = [...judges.entries()]
+    .map(([judge, j]) => ({ judge, positive: j.positive, negative: j.negative, meanScore: j.scores.length ? Math.round((100 * j.scores.reduce((a, b) => a + b, 0)) / j.scores.length) / 100 : null }))
+    .sort((a, b) => (b.positive + b.negative) - (a.positive + a.negative));
+
   return {
     currentVersion,
     window: { since: opts.sinceIso ?? null, until: new Date().toISOString(), scope: opts.scope ?? null },
     overview: { decisions: Number(overview.decisions ?? 0), shadows: Number(overview.shadows ?? 0), autoAccepts: Number(overview.autoAccepts ?? 0), negatives: Number(overview.negatives ?? 0) },
-    byScope, byPolicyVersion, topThreads,
+    byScope, byPolicyVersion, topThreads, byJudge,
   };
 }
 
@@ -157,6 +191,11 @@ export function formatReview(r: ReviewReport): string {
   L.push(`## thread focus (top would-accept)`);
   for (const t of r.topThreads) L.push(`- ${t.threadId} — ${t.wouldAccept}× (last ${t.lastTs.slice(0, 10)})`);
   L.push(``);
+  if (r.byJudge.length > 0) {
+    L.push(`## judges (BYO-judge calibration — verdict mix and mean confidence)`);
+    for (const j of r.byJudge) L.push(`- ${j.judge}: ${j.positive} admit / ${j.negative} reject · mean P(admit) ${j.meanScore ?? "—"}`);
+    L.push(``);
+  }
   L.push(`> suggestion is a heuristic from recorded evidence only; the rung is granted by a person, by policy.`);
   return L.join("\n");
 }

@@ -98,3 +98,25 @@ describe("reviewReport", () => {
     expect(reviewReport(engine, { scope: "im_dm" }).overview.decisions).toBe(0);
   });
 });
+
+describe("reviewReport judges (BYO-judge #133)", () => {
+  it("aggregates scored bases per judge: verdict mix and mean confidence", () => {
+    const j = (id: string, verdict: "positive" | "negative", score: number, thread: string) => {
+      const t = trig(id, "issue", thread);
+      engine.ingest([{ trigger: t, gate: evaluateGate(engine.policy()!, t), resolution: resolveCandidate(engine.policy()!, evaluateGate(engine.policy()!, t), { verdict, score, judge: "piccolo-27b" }) }]);
+    };
+    j("1", "positive", 0.91, "github:o/r/issues/1");
+    j("2", "positive", 0.85, "github:o/r/issues/2");
+    j("3", "negative", 0.20, "github:o/r/issues/3");
+    const r = reviewReport(engine);
+    expect(r.byJudge).toHaveLength(1);
+    expect(r.byJudge[0]).toEqual({ judge: "piccolo-27b", positive: 2, negative: 1, meanScore: 0.65 });
+  });
+
+  it("no scored decisions → empty byJudge, format omits the section", () => {
+    ingest(trig(1, "issue", "github:o/r/issues/9"));
+    const r = reviewReport(engine);
+    expect(r.byJudge).toEqual([]);
+    expect(formatReview(r)).not.toContain("## judges");
+  });
+});

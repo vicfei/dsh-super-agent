@@ -51,13 +51,16 @@ describe("decisionAssessor", () => {
     expect(await a.assess(trigger)).toEqual({ verdict: "negative", score: 0.41, judge: "m" });
   });
 
-  it("fails closed: endpoint error, missing logprobs, and no candidate mass all → negative", async () => {
+  it("fails closed: endpoint error, missing logprobs, and no candidate mass → negative tagged with the judge (visible as unreachable)", async () => {
     const err = decisionAssessor({ baseUrl: "http://j", model: "m", fetchImpl: vi.fn(async () => new Response("nope", { status: 500 })) as unknown as typeof fetch });
-    expect(await err.assess(trigger)).toBe("negative");
+    expect(await err.assess(trigger)).toEqual({ verdict: "negative", judge: "m" });
     const noLp = decisionAssessor({ baseUrl: "http://j", model: "m", fetchImpl: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "admit" } }] }), { status: 200 })) as unknown as typeof fetch });
-    expect(await noLp.assess(trigger)).toBe("negative");
+    expect(await noLp.assess(trigger)).toEqual({ verdict: "negative", judge: "m" });
     const offTopic = decisionAssessor({ baseUrl: "http://j", model: "m", fetchImpl: vi.fn(async () => new Response(JSON.stringify(topLogprobs([["banana", Math.log(0.9)]])), { status: 200 })) as unknown as typeof fetch });
-    expect(await offTopic.assess(trigger)).toBe("negative");
+    expect(await offTopic.assess(trigger)).toEqual({ verdict: "negative", judge: "m" });
+    // the unreachable verdict lands in the basis as '· <judge> unreachable'
+    const gate = evaluateGate(policy, trigger);
+    expect(resolveCandidate(policy, gate, { verdict: "negative", judge: "m" }).basis).toContain("· m unreachable");
   });
 });
 

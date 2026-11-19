@@ -60,6 +60,9 @@ function parseOrDie() {
         "judge-base-url": { type: "string" },
         "judge-model": { type: "string" },
         "judge-threshold": { type: "string" },
+        // fleet (v1.8): one URL over every engine
+        engines: { type: "string" },
+        "fleet-port": { type: "string" },
         interval: { type: "string" },
         "no-panel": { type: "boolean", default: false },
         token: { type: "string" },
@@ -88,7 +91,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "merge", "health", "stats", "review", "routines", "events", "ops", "ops", "init", "doctor", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "fleet", "merge", "health", "stats", "review", "routines", "events", "ops", "ops", "init", "doctor", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -485,6 +488,27 @@ try {
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
     await new Promise<never>(() => {}); // serve until signal — the finally-close must not run
+  } else if (command === "fleet") {
+    const enginesArg = args.engines ?? process.env.DSH_FLEET_ENGINES;
+    if (!enginesArg) die(`fleet needs --engines name:port,name:port (or DSH_FLEET_ENGINES)${WITH_HELP}`);
+    const engines = enginesArg.split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
+      const [name, port] = s.split(":");
+      return { name, port: Number(port) };
+    }).filter((e) => e.name && Number.isFinite(e.port) && e.port > 0);
+    if (engines.length === 0) die(`no valid engine specs in "${enginesArg}"${WITH_HELP}`);
+    const port = Number(args["fleet-port"] ?? process.env.DSH_FLEET_PORT ?? 8790);
+    const { startFleet } = await import("./fleet.js");
+    const server = await startFleet(engines, port);
+    console.log(`fleet: http://127.0.0.1:${port} over ${engines.map((e) => `${e.name}(:${e.port})`).join(", ")} — Ctrl-C to stop`);
+    const shutdown = () => {
+      server.shutdown();
+      engine.close();
+      server.close(() => process.exit(0));
+      setTimeout(() => { server.closeAllConnections(); process.exit(0); }, 2000).unref();
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    await new Promise<never>(() => {});
   } else if (command === "wechat-login") {
     // iLink Bot Protocol QR login (v0.8 M8-4): the human scans with their WeChat app.
     if (args.web) {

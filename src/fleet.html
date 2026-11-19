@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh fleet</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: #0d1117; color: #c9d1d9; padding: 24px; }
+  h1 { font-size: 16px; margin: 0 0 4px; color: #e6edf3; }
+  .sub { color: #8b949e; margin-bottom: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px 14px; }
+  .card h2 { font-size: 14px; margin: 0 0 6px; color: #e6edf3; }
+  .card a { color: #58a6ff; text-decoration: none; }
+  .quiet { color: #8b949e; }
+  .badge { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 12px; margin-right: 4px; }
+  .b-accept { background: #23863633; color: #3fb950; }
+  .b-shadow { background: #d2992233; color: #e3b341; }
+  .b-ignore { background: #da363033; color: #f85149; }
+  .b-person { background: #a371f733; color: #bc8cff; }
+  .scope { margin: 3px 0; font-size: 13px; }
+  footer { margin-top: 24px; color: #6e7681; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>dsh fleet — every engine, one glance</h1>
+<div class="sub">read-only aggregation over each engine's own panel API · refresh 10s</div>
+<div class="grid" id="fleet"></div>
+<footer>healthy engines take no space — an unreachable card is the alert</footer>
+<script>
+const ENGINES = __ENGINES__;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mins = ms => ms === null || ms === undefined ? '—' : (m => m < 90 ? Math.round(m)+'m' : m < 2880 ? (m/60).toFixed(1)+'h' : (m/1440).toFixed(1)+'d')(ms/60000);
+
+async function j(path) { const r = await fetch(path); if (!r.ok) throw new Error(r.status); return r.json(); }
+
+async function engineCard(e) {
+  let inner;
+  try {
+    const [s, rv] = await Promise.all([
+      j(`/api/engine/${e.name}/api/state`),
+      j(`/api/engine/${e.name}/api/review`).catch(() => null),
+    ]);
+    const h = s.health || { tickets: {} };
+    const modes = [];
+    if (s.policy) modes.push(`policy v${s.policy.version} · <span class="quiet">${esc(s.policy.acceptMode)}</span>`);
+    modes.push(`queued ${h.tickets.queued ?? 0} · working ${h.tickets.working ?? 0} · needs-person ${h.tickets['needs-person'] ?? 0}`);
+    modes.push(`oldest needs-person ${mins(h.oldestNeedsPersonMs)}`);
+    const scopes = (rv?.byScope ?? []).map(sc => {
+      const sug = { 'auto-candidate': 'b-shadow', 'hold': 'b-ignore', 'insufficient': 'b-person' }[sc.suggestion] ?? 'b-person';
+      const stale = sc.shadows !== sc.shadowsCurrent ? ` <span class="quiet">(${sc.shadowsCurrent} current)</span>` : '';
+      return `<div class="scope"><span class="badge ${sug}">${esc(sc.suggestion)}</span>${esc(sc.scope)} — ${sc.shadows} shadows${stale}${sc.autoGranted ? ' <span class="badge b-accept">AUTO GRANTED</span>' : ''}</div>`;
+    }).join('');
+    const judges = (rv?.byJudge ?? []).map(j2 => `<span class="quiet">${esc(j2.judge)}: ${j2.positive}↑/${j2.negative}↓${j2.unreachable ? ` ⚠${j2.unreachable}unreach` : ''} μ${j2.meanScore ?? '—'}</span>`).join(' · ');
+    inner = `<h2><a href="http://127.0.0.1:${e.port}">${esc(e.name)}</a> · 127.0.0.1:${e.port}</h2>
+      <div>${modes.join('<br>')}</div>${scopes ? `<div style="margin-top:6px">${scopes}</div>` : ''}${judges ? `<div class="quiet" style="margin-top:4px">${judges}</div>` : ''}`;
+  } catch (err) {
+    inner = `<h2>${esc(e.name)} · 127.0.0.1:${e.port}</h2><span class="badge b-ignore">unreachable</span> <span class="quiet">${esc(err.message || err)}</span>`;
+  }
+  const el = document.getElementById(`e-${e.name}`) ?? (() => { const d = document.createElement('div'); d.className = 'card'; d.id = `e-${e.name}`; document.getElementById('fleet').appendChild(d); return d; })();
+  el.innerHTML = inner;
+}
+
+function tick() { for (const e of ENGINES) engineCard(e); }
+tick();
+setInterval(tick, 10000);
+</script>
+</body>
+</html>

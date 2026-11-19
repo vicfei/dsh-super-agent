@@ -9,7 +9,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "build": "tsc -p tsconfig.json && cp src/panel.html dist/panel.html",
+    "build": "tsc -p tsconfig.json && cp src/panel.html src/fleet.html dist/",
     "poll": "tsx src/cli.ts poll",
     "tickets": "tsx src/cli.ts tickets",
     "work": "tsx src/cli.ts work",

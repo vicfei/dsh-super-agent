@@ -1,6 +1,6 @@
 # dsh-super-agent
 
-[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@vicfei/dsh-super-agent?registry=https%3A%2F%2Fregistry.npmjs.org&color=blue)](https://www.npmjs.com/package/@vicfei/dsh-super-agent) [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![tests](https://img.shields.io/badge/tests-356-brightgreen)](.)
+[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@vicfei/dsh-super-agent?registry=https%3A%2F%2Fregistry.npmjs.org&color=blue)](https://www.npmjs.com/package/@vicfei/dsh-super-agent) [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![tests](https://img.shields.io/badge/tests-375-brightgreen)](.)
 
 **给任意 CLI 编码智能体的准入控制、观察模式与工单编排。**
 
@@ -19,6 +19,12 @@
 </p>
 
 ---
+
+**让 coding agent 替你装**——把这一行粘进 Claude Code / Codex / Cursor / OpenCode：
+
+```text
+帮我安装 dsh-super-agent：全局安装 `npm i -g @vicfei/dsh-super-agent`，在本仓运行 `dsh init`（默认值即可），然后展示 https://github.com/vicfei/dsh-super-agent 的 Quick start，并问我 allowedList 里填哪个登录名。
+```
 
 ## 为什么做这个
 
@@ -93,7 +99,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 ## 当前状态
 
-下表每一行都已接线、有离线测试覆盖(290 个),并跑在本仓库自己的狗粮守护进程上:
+下表每一行都已接线、有离线测试覆盖(375 个),并跑在本仓库自己的四引擎狗粮舰队上:
 
 | 组件 | 状态 |
 |---|---|
@@ -114,6 +120,12 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | Routines——定时 Source:cron + 逐 routine 时区 + 重启安全补跑,**照走准入控制** | ✅ v1.2——[设计](docs/designs/routines-source.md) |
 | `dsh init` 向导 + `dsh doctor`——两文件上手 + 只读体检(exit 0/1/2) | ✅ v1.2——[设计](docs/designs/init-wizard.md) |
 | 沙箱默认开启 + worker 的审批请求文件(`.dsh/approval-request.md`) | ✅ v1.2 |
+| 证据账本——只追加、哈希链；`dsh events verify` 证明无静默篡改；head 锚防截尾 | ✅ v1.5 |
+| `dsh review`——可计算的晋升评审：按 scope 的影子计数按策略纪元拆分，hold/insufficient/auto-candidate 建议 | ✅ v1.6 |
+| 范围级 auto 档 + GRANT 写路径——一键、精确策略 diff、双确认、`policy.rung` 落账 | ✅ v1.6 |
+| 信任控制台——实时证据流、时间线轨道、双语界面（中/EN） | ✅ v1.6–1.8 |
+| 自带裁判——`--assessment decision`：读任意端点 logprobs 上 admit/reject 的概率质量；评分落账；按裁判校准 | ✅ v1.7 |
+| `dsh fleet`——一个 URL 看全部引擎：策略/模式、健康、评审建议、裁判健康；同源代理、天然只读 | ✅ v1.8 |
 
 **IM 远程审批面(v1.1)。** 人的审批面,装进口袋——按[设计文档](docs/designs/im-approval-surface.md)实现。开启 `policy.approval` 后,allowedList 成员首次 IM 私聊 bot 即注册其 **ops 线程**;待决事项送达该线程,**单个数字**即处置:needs-person 工单(`1` 重新排队 · `2` 停止 · `3` 详情)与预演完成的投机工单(`1` promote——交付闸 · `2` 丢弃 · `3` 详情)。防误触是结构性的:仅全等单数字、**破坏性操作双确认**(5 分钟内第二个 `2`)、60 分钟时效、每线程 newest-wins 单 pending、每个动作都有回执——以及两条设计上的硬边界:**GitHub 合并审批永远留在 GitHub**(身份是结构性的),审批面永远改不了策略、开不了工。群里的数字、陌生人的数字、带字的数字,都只是聊天。
 
@@ -266,6 +278,10 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 [MIT](LICENSE)
 
 这里的区分是层级:DSH 插件生态里已有 25+ 个插件守卫会话内的**单次工具调用**——但没有一个在工单层守卫**谁可以开工**。
+
+## Star 历史
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vicfei/dsh-super-agent&type=Date)](https://star-history.com)
 
 ## 相关项目
 

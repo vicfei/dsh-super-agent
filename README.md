@@ -1,14 +1,14 @@
 # dsh-super-agent
 
-[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@vicfei/dsh-super-agent?registry=https%3A%2F%2Fregistry.npmjs.org&color=blue)](https://www.npmjs.com/package/@vicfei/dsh-super-agent) [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![tests](https://img.shields.io/badge/tests-356-brightgreen)](.)
+[![CI](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/vicfei/dsh-super-agent/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@vicfei/dsh-super-agent?registry=https%3A%2F%2Fregistry.npmjs.org&color=blue)](https://www.npmjs.com/package/@vicfei/dsh-super-agent) [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![tests](https://img.shields.io/badge/tests-375-brightgreen)](.)
 
 **Admission control, observe mode & tickets for any CLI coding agent.**
+
+**[English](README.md) · [简体中文](README.zh-CN.md)** — 准入控制与挣得自主：任何 CLI agent 都能当工人，微信一位数字完成审批，哈希链账本为每一次裁决留证。
 
 An independent, executor-agnostic implementation of the [DeepSeek Super-agent](https://github.com/deepseek-ai/dsh-superagent-prototype) orchestration design — the part every other orchestrator skipped: **who is allowed to start work, and how you learn to trust it.**
 
 > ⚠️ **Independent community project — not affiliated with DeepSeek or the `deepseek-ai` organization.** The design is taken from the public article [*Super-agent: Design Explorations*](https://mp.weixin.qq.com/s/zoS7GlReWPhfCjENGxXCdg) (DeepSeek 产品部) and the MIT-licensed [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype) docs. No DeepSeek Harness, no DeepSeek model required. Full credits in [Design credits](#design-credits).
-
-[中文文档](README.zh-CN.md)
 
 <p align="center">
   <img src="docs/trust-ladder.svg" alt="The trust ladder — off → observe → auto; agents earn autonomy rung by rung over a hash-chained evidence ledger" width="880">
@@ -18,6 +18,12 @@ An independent, executor-agnostic implementation of the [DeepSeek Super-agent](h
   <img src="docs/banner.png" alt="dsh-super-agent — admission control, observe mode and tickets for any CLI coding agent" width="880">
 </p>
 
+
+**Have your coding agent set it up** — paste one line into Claude Code / Codex / Cursor / OpenCode:
+
+```text
+Install dsh-super-agent for me: run `npm i -g @vicfei/dsh-super-agent`, then `dsh init` in this repo (accept defaults), then show me the Quick start section of https://github.com/vicfei/dsh-super-agent and ask me which login goes into allowedList.
+```
 
 ---
 
@@ -94,7 +100,7 @@ The promotion desk (`dsh review`, same console) turns that evidence into per-sco
 
 ## Status
 
-Every row below is wired, offline-tested (290 tests), and running on this repo's own dogfood daemon:
+Every row below is wired, offline-tested (375 tests), and running on this repo's own four-engine dogfood fleet:
 
 | Piece | Status |
 |---|---|
@@ -115,6 +121,12 @@ Every row below is wired, offline-tested (290 tests), and running on this repo's
 | Routines — the timer Source: cron + per-routine IANA tz + restart-safe catch-up, **through admission control** | ✅ v1.2 — [design](docs/designs/routines-source.md) |
 | `dsh init` wizard + `dsh doctor` — two-file onboarding + the read-only truth-teller (exit 0/1/2) | ✅ v1.2 — [design](docs/designs/init-wizard.md) |
 | Sandbox default-on + the worker's approval-request file (`.dsh/approval-request.md`) | ✅ v1.2 |
+| Evidence ledger — append-only, hash-chained; `dsh events verify` proves no silent edit; head anchor catches tail truncation | ✅ v1.5 |
+| `dsh review` — the computable promotion review: per-scope shadows split by policy era, hold/insufficient/auto-candidate suggestions | ✅ v1.6 |
+| Per-scope auto rungs + the GRANT write path — one click, exact policy diff, double-confirm, `policy.rung` on the ledger | ✅ v1.6 |
+| Trust console — live evidence stream, timeline rail, bilingual UI (EN/中文) | ✅ v1.6–1.8 |
+| BYO judge — `--assessment decision`: probability mass over admit/reject from any endpoint's logprobs; scored bases; per-judge calibration | ✅ v1.7 |
+| `dsh fleet` — one URL over every engine: policy/mode, health, review suggestions, judge health; same-origin proxy, read-only | ✅ v1.8 |
 
 **IM remote approval surface (v1.1).** The human approval surface, pocket-sized — implemented per [the design](docs/designs/im-approval-surface.md). With `policy.approval` enabled, an allowed-list member's first IM DM to the bot registers their **ops thread**; pending decisions arrive there and a **single digit** resolves them: needs-person tickets (`1` requeue · `2` stop · `3` detail) and finished speculative rehearsals (`1` promote — the deliver gate · `2` discard · `3` detail). Anti-mistouch is structural: whole-body digit shape only, **double-key for destructive acts** (a second `2` within 5 minutes), 60-minute expiry, newest-wins single pending per thread, a receipt for every applied action — and two hard non-goals by design: **GitHub merge approvals stay on GitHub** (that identity is structural), and the surface can never change policy or create work. Digits in groups, from strangers, or attached to words are just chat.
 
@@ -247,6 +259,10 @@ And the panel (`npm run panel`, localhost — the v1.3 dashboard) shows only wha
 Two recent heavyweights, for orientation: **Paseo** is the cockpit — drive many agents from desktop and mobile; **LoopForge** is the SOP floor — repeatable delivery with human gates in chat. Both are the power axis; neither gates *who may start work*, keeps a tamper-evident evidence chain, or grants autonomy rung by rung.
 
 The distinction is levels: inside the DSH plugin ecosystem, 25+ plugins guard individual **tool calls** within a session — none gates **who may start work** at the ticket level.
+
+## Star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vicfei/dsh-super-agent&type=Date)](https://star-history.com)
 
 ## Related
 

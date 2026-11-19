@@ -21,6 +21,9 @@ export interface ScopeEvidence {
   autoAccepts: number;
   /** inferred candidates the assessor rejected — evidence against. */
   assessorNegatives: number;
+  /** rejections recorded under the CURRENT policy version — old-era negatives don't hold a
+   *  scope at "hold" forever, the same era logic shadows already follow (#148 follow-up). */
+  negativesCurrent: number;
   /** distinct threads behind the shadows — breadth, not one noisy thread. */
   threads: number;
   /** shadows recorded under the CURRENT policy version — old-era shadows don't earn rungs. */
@@ -52,6 +55,8 @@ export interface JudgeStat {
   judge: string;
   positive: number;
   negative: number;
+  /** fail-closed rejections — the judge never answered (endpoint error / no mass). */
+  unreachable: number;
   /** mean P(admit) across the judge's scored decisions, rounded to 2dp; null = no scores. */
   meanScore: number | null;
 }
@@ -72,8 +77,8 @@ function currentPolicyRows(engine: Engine): unknown {
   return row ? (JSON.parse(row.v) as { table?: unknown }).table : undefined;
 }
 
-function suggest(shadowsCurrent: number, negatives: number, threads: number): ScopeEvidence["suggestion"] {
-  if (negatives > 0) return "hold";
+function suggest(shadowsCurrent: number, negativesCurrent: number, threads: number): ScopeEvidence["suggestion"] {
+  if (negativesCurrent > 0) return "hold";
   if (shadowsCurrent >= 10 && threads >= 3) return "auto-candidate";
   return "insufficient";
 }
@@ -100,6 +105,7 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
            SUM(d.kind='ignore' AND d.would_accept=1 AND d.policy_version = ${currentVersion ?? -1}) shadowsCurrent,
            SUM(d.kind='accept' AND d.strength='inferred') autoAccepts,
            SUM(d.basis LIKE '%assessed negative%') negatives,
+           SUM(d.basis LIKE '%assessed negative%' AND d.policy_version = ${currentVersion ?? -1}) negativesCurrent,
            COUNT(DISTINCT CASE WHEN d.would_accept=1 THEN t.thread_id END) threads,
            MIN(d.ts) firstTs, MAX(d.ts) lastTs
     FROM decision d JOIN trigger t ON t.id=d.trigger_id WHERE 1=1 ${since} ${scope}
@@ -120,9 +126,10 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
       autoAccepts: Number(r.autoAccepts ?? 0),
       assessorNegatives: negatives,
       threads,
+      negativesCurrent: Number(r.negativesCurrent ?? 0),
       firstTs: r.firstTs ? String(r.firstTs) : null,
       lastTs: r.lastTs ? String(r.lastTs) : null,
-      suggestion: suggest(shadowsCurrent, negatives, threads),
+      suggestion: suggest(shadowsCurrent, Number(r.negativesCurrent ?? 0), threads),
       autoGranted: grantedScopes.has(String(r.scope)),
     };
   });
@@ -148,18 +155,20 @@ export function reviewReport(engine: Engine, opts: ReviewWindow = {}): ReviewRep
       d.basis
     FROM decision d JOIN trigger t ON t.id=d.trigger_id
     WHERE d.strength='inferred' AND d.basis LIKE '%· %' ${since} ${scope}`).all() as { judge_raw: string; would_accept: number; basis: string }[];
-  const judges = new Map<string, { positive: number; negative: number; scores: number[] }>();
+  const judges = new Map<string, { positive: number; negative: number; unreachable: number; scores: number[] }>();
   for (const r of judgeRows) {
-    const m = /^([A-Za-z0-9._\/-]+) (0\.\d\d|1\.00)\)?$/.exec(r.judge_raw.trim()); // \)? — the negative arm wraps the suffix in parens
+    const raw = r.judge_raw.trim().replace(/\)$/, "");
+    const m = /^([A-Za-z0-9._\/-]+) (0\.\d\d|1\.00)$/.exec(raw) ?? /^([A-Za-z0-9._\/-]+) (unreachable)$/.exec(raw);
     if (!m) continue; // foreign basis text that happens to contain '·' — skip, not ours
-    const j = judges.get(m[1]) ?? { positive: 0, negative: 0, scores: [] };
+    const j = judges.get(m[1]) ?? { positive: 0, negative: 0, unreachable: 0, scores: [] };
+    if (m[2] === "unreachable") { j.unreachable++; judges.set(m[1], j); continue; }
     if (r.basis.includes("assessed negative")) j.negative++; else j.positive++;
     j.scores.push(Number(m[2]));
     judges.set(m[1], j);
   }
   const byJudge: JudgeStat[] = [...judges.entries()]
-    .map(([judge, j]) => ({ judge, positive: j.positive, negative: j.negative, meanScore: j.scores.length ? Math.round((100 * j.scores.reduce((a, b) => a + b, 0)) / j.scores.length) / 100 : null }))
-    .sort((a, b) => (b.positive + b.negative) - (a.positive + a.negative));
+    .map(([judge, j]) => ({ judge, positive: j.positive, negative: j.negative, unreachable: j.unreachable, meanScore: j.scores.length ? Math.round((100 * j.scores.reduce((a, b) => a + b, 0)) / j.scores.length) / 100 : null }))
+    .sort((a, b) => (b.positive + b.negative + b.unreachable) - (a.positive + a.negative + a.unreachable));
 
   return {
     currentVersion,
@@ -193,7 +202,7 @@ export function formatReview(r: ReviewReport): string {
   L.push(``);
   if (r.byJudge.length > 0) {
     L.push(`## judges (BYO-judge calibration — verdict mix and mean confidence)`);
-    for (const j of r.byJudge) L.push(`- ${j.judge}: ${j.positive} admit / ${j.negative} reject · mean P(admit) ${j.meanScore ?? "—"}`);
+    for (const j of r.byJudge) L.push(`- ${j.judge}: ${j.positive} admit / ${j.negative} reject · mean P(admit) ${j.meanScore ?? "—"}${j.unreachable > 0 ? ` · ⚠ ${j.unreachable} unreachable` : ""}`);
     L.push(``);
   }
   L.push(`> suggestion is a heuristic from recorded evidence only; the rung is granted by a person, by policy.`);

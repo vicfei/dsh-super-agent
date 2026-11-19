@@ -110,7 +110,30 @@ describe("reviewReport judges (BYO-judge #133)", () => {
     j("3", "negative", 0.20, "github:o/r/issues/3");
     const r = reviewReport(engine);
     expect(r.byJudge).toHaveLength(1);
-    expect(r.byJudge[0]).toEqual({ judge: "piccolo-27b", positive: 2, negative: 1, meanScore: 0.65 });
+    expect(r.byJudge[0]).toEqual({ judge: "piccolo-27b", positive: 2, negative: 1, unreachable: 0, meanScore: 0.65 });
+    const fmt = formatReview(r);
+    expect(fmt).toContain("piccolo-27b: 2 admit / 1 reject");
+    expect(fmt).not.toContain("unreachable");
+  });
+
+  it("counts judge-unreachable rows separately from real rejections", () => {
+    const t1 = trig("u1", "issue", "github:o/r/issues/11");
+    engine.ingest([{ trigger: t1, gate: evaluateGate(engine.policy()!, t1), resolution: resolveCandidate(engine.policy()!, evaluateGate(engine.policy()!, t1), { verdict: "negative", judge: "piccolo-27b" }) }]);
+    const r = reviewReport(engine);
+    expect(r.byJudge[0].unreachable).toBe(1);
+    expect(formatReview(r)).toContain("⚠ 1 unreachable");
+  });
+
+  it("era-aware negatives: an old-era rejection no longer holds the scope at hold", () => {
+    // v1-era negative on im_dm, then the policy moves on — the suggestion must recover
+    const old = trig("n1", "im_dm", "wechat:peer/x");
+    engine.ingest([{ trigger: old, gate: evaluateGate(engine.policy()!, old), resolution: resolveCandidate(engine.policy()!, evaluateGate(engine.policy()!, old), "negative") }]);
+    engine.setPolicyIfChanged({ ...base, version: 2 }); // the policy moves on — v1 is now an old era
+    engine.db.prepare("UPDATE decision SET policy_version = 1 WHERE id = (SELECT MAX(id) FROM decision)").run();
+    const before = reviewReport(engine).byScope.find((s) => s.scope === "im_dm");
+    expect(before?.assessorNegatives).toBeGreaterThanOrEqual(1);
+    expect(before?.negativesCurrent).toBe(0);
+    expect(before?.suggestion).not.toBe("hold");
   });
 
   it("no scored decisions → empty byJudge, format omits the section", () => {

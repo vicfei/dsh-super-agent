@@ -32,7 +32,7 @@ This page binds localhost only; nothing leaves this machine.</div>
 let busy=false, done=false;
 async function gen(){ if(busy||done)return; busy=true;
   btn.disabled=true; st.className=''; st.textContent='fetching…'; qr.innerHTML='';
-  let r; try{ r=await (await fetch('/qr')).json(); }catch(e){ st.textContent='error: '+e; busy=false; btn.disabled=false; return; }
+  let r; try{ r=await (await fetch('/qr', { method: 'POST' })).json(); }catch(e){ st.textContent='error: '+e; busy=false; btn.disabled=false; return; }
   if(r.err){ st.textContent='error: '+r.err; busy=false; btn.disabled=false; return; }
   qr.innerHTML='<img src="'+r.img+'">'; st.textContent='waiting for scan…'; busy=false;
   await poll(r.born);}

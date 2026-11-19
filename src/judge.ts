@@ -94,7 +94,7 @@ export function decisionAssessor(opts: DecisionAssessorOptions): Assessor {
         });
         if (!res.ok) {
           console.warn(`[judge] endpoint ${res.status} — failing closed to negative`);
-          return "negative";
+          return { verdict: "negative", judge };
         }
         const data = (await res.json()) as {
           choices?: { logprobs?: { content?: { top_logprobs?: LogprobEntry[] }[] } }[];
@@ -102,19 +102,19 @@ export function decisionAssessor(opts: DecisionAssessorOptions): Assessor {
         const top = data.choices?.[0]?.logprobs?.content?.[0]?.top_logprobs;
         if (!top || top.length === 0) {
           console.warn(`[judge] endpoint returned no top_logprobs — failing closed to negative`);
-          return "negative";
+          return { verdict: "negative", judge };
         }
         const mass = candidateMass(top, candidates);
         if (!mass) {
           console.warn(`[judge] neither "${candidates.positive}" nor "${candidates.negative}" carries mass — failing closed to negative`);
-          return "negative";
+          return { verdict: "negative", judge };
         }
         const total = mass.positive + mass.negative;
         const p = mass.positive / total; // normalized confidence over the two candidates
         return { verdict: p >= threshold ? "positive" : "negative", score: Math.round(p * 100) / 100, judge };
       } catch (e) {
         console.warn(`[judge] ${e instanceof Error ? e.message : e} — failing closed to negative`);
-        return "negative";
+        return { verdict: "negative", judge };
       }
     },
   };

@@ -87,7 +87,10 @@ export function assessmentVerdict(a: Assessment): "positive" | "negative" {
 export function assessmentBasisSuffix(a: Assessment): string {
   if (typeof a === "string") return "";
   const s = typeof a.score === "number" && Number.isFinite(a.score) ? a.score.toFixed(2) : null;
-  return s === null ? "" : ` · ${a.judge ?? "judge"} ${s}`;
+  if (s !== null) return ` · ${a.judge ?? "judge"} ${s}`;
+  // judge attached but no score = the fail-closed path: the judge never answered (#148 follow-up —
+  // review separates "the judge said no" from "the judge was unreachable")
+  return a.judge ? ` · ${a.judge} unreachable` : "";
 }
 
 export type Resolution =

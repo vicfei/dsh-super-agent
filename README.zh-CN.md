@@ -85,6 +85,12 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 
 晋升台（`dsh review`，同一控制台）把证据变成按范围的决策——scope 卡带按策略纪元拆分的影子计数、hold/insufficient/auto-candidate 建议、以及一个先展示精确策略 diff 再动版本的授权链接。[整页视图](docs/screenshots/01-full-page.png)。
 
+## 舰队面板——所有引擎，一眼尽览
+
+`dsh fleet --engines dogfood:8799,bot:8798,…` 提供对每个引擎自身面板 API 的只读聚合：策略版本与模式、健康、带 GRANTED 标记与纪元陈旧度的评审建议、裁判健康——每引擎一卡，10 秒刷新。不可达的卡即警报（"健康引擎不占版面"）。页面只与 fleet 服务对话、由它服务端代理引擎 API：零 CORS 改动、零新增写路径。
+
+![舰队面板：四张引擎卡——策略/模式、健康行、评审建议，一台死引擎一目了然](docs/screenshots/08-fleet.png)
+
 ## 当前状态
 
 下表每一行都已接线、有离线测试覆盖(290 个),并跑在本仓库自己的狗粮守护进程上:

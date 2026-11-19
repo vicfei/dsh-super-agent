@@ -86,6 +86,12 @@ The evidence stream is the same ledger `dsh events verify` walks: every decision
 
 The promotion desk (`dsh review`, same console) turns that evidence into per-scope decisions — scope cards with shadow counts split by policy era, hold/insufficient/auto-candidate suggestions, and a grant link whose click shows the exact policy diff before it versions. [Full-page view](docs/screenshots/01-full-page.png).
 
+## The fleet panel — every engine, one glance
+
+`dsh fleet --engines dogfood:8799,bot:8798,…` serves a read-only aggregation over each engine's own panel API: policy version and mode, health, review suggestions with GRANTED marks and era staleness, judge health — one card per engine, 10s refresh. An unreachable card is the alert ("healthy engines take no space"). The page talks only to the fleet server, which proxies engine APIs server-side: zero CORS changes, zero new write paths.
+
+![The fleet panel: four engine cards — policy/mode, health lines, review suggestions, one dead engine standing out](docs/screenshots/08-fleet.png)
+
 ## Status
 
 Every row below is wired, offline-tested (290 tests), and running on this repo's own dogfood daemon:

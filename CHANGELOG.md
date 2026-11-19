@@ -1,3 +1,16 @@
+## 1.8.0 — the witnessed grant
+
+- `dsh fleet --engines name:port,…`: one URL over every engine. Cards show policy/mode,
+  health, review suggestions (GRANTED marks, era staleness) and judge health; 10s refresh.
+  Same-origin proxy design — the page never talks to engines directly, zero new write paths.
+  First live day caught a dead engine. Screenshot: docs/screenshots/08-fleet.png.
+- `dsh review` correctness: rejections are now era-scoped like shadows (an old-policy "no"
+  no longer holds a scope at hold forever); judge health separates "the judge said no" from
+  "the judge was unreachable" (⚠ N unreachable) — fail-closed verdicts carry the judge name
+  in the basis (`· <judge> unreachable`).
+- WeChat login web page: the QR button POSTs /qr as the server expects (the GET/POST mismatch
+  404'd the first scan since November).
+
 ## 1.7.0 — bring your own judge
 
 - `--assessment decision` (#133): the slow path reads probability mass over `admit`/`reject`

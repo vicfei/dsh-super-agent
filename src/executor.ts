@@ -6,6 +6,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { composePersona } from "./persona.js";
 
 export interface SandboxConfig {
   /** Confine the worker: read-only root, rw only the worktree, network off. Default false. */
@@ -34,6 +35,9 @@ export interface ExecutorConfig {
   blockedCommands: string[];
   /** v0.9-2: sandbox the worker subprocess (see SandboxConfig). */
   sandbox?: SandboxConfig;
+  /** v1.9 P1-1: persona directory (CWD-relative) — nine owner-edited files composed in
+   *  fixed order into the worker prompt; absent dir = the feature is inert. */
+  personaDir?: string;
 }
 
 const SECRET_ENV_NAME = /token|secret|key|password|credential/i;
@@ -101,6 +105,9 @@ export interface ExecutorResult {
   worktree: string;
   /** Commit the worktree branch was created from — the base for PR delivery diffing. */
   baseSha: string;
+  /** v1.9 P1-1: what the composed persona was for THIS dispatch (absent = none) — the
+   *  caller ledger-pins it so later persona edits are visible against the run. */
+  persona?: { dir: string; files: string[]; omitted: string[]; hash: string };
 }
 
 const OUTPUT_CAP = 64 * 1024;
@@ -186,7 +193,8 @@ export class Executor {
     }
 
     const promptFile = join(dir, "DSH_PROMPT.md");
-    writeFileSync(promptFile, renderPrompt(ticket, trigger, repo, memory));
+    const persona = composePersona(this.cfg.personaDir);
+    writeFileSync(promptFile, renderPrompt(ticket, trigger, repo, memory, persona?.section));
 
     const baseSha = (await sh(`git -C ${JSON.stringify(dir)} rev-parse HEAD`, { timeoutMs: 10_000 })).output.trim();
 
@@ -206,11 +214,15 @@ export class Executor {
       },
     });
     const timedOut = run.code === null;
-    return { exitCode: run.code, timedOut, output: run.output, worktree: dir, baseSha };
+    return {
+      exitCode: run.code, timedOut, output: run.output, worktree: dir, baseSha,
+      ...(persona ? { persona: { dir: persona.dir, files: persona.files, omitted: persona.omitted, hash: persona.hash } } : {}),
+    };
   }
 }
 
-export function renderPrompt(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string, memory: string[] = []): string {
+export function renderPrompt(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string, memory: string[] = [], personaSection?: string): string {
+  const persona = personaSection === undefined ? [] : ["", personaSection];
   const memorySection = memory.length === 0
     ? []
     : [
@@ -228,6 +240,7 @@ export function renderPrompt(ticket: { id: number; threadId: string }, trigger: 
     `Author: @${trigger.author}`,
     `Thread: ${ticket.threadId}`,
     `Repository: ${repo}`,
+    ...persona,
     "",
     "## Request",
     "",

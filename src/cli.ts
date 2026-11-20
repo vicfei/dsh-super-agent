@@ -138,6 +138,8 @@ if (command === "init") {
   for (const s of result.skipped) console.log(`exists: ${s} — kept (use --force to overwrite)`);
   for (const b of result.backups) console.log(`backup:  ${b}`);
   for (const w of result.written) console.log(`wrote:   ${w}`);
+  for (const w of result.persona.written) console.log(`persona: ${w}`);
+  for (const s of result.persona.skipped) console.log(`persona: ${s} — kept (owner content is never overwritten)`);
   if (result.written.length === 0) process.exitCode = 1;
   for (const l of initMod.nextSteps(answers, args.dir)) console.log(l);
   process.exit(process.exitCode ?? 0);

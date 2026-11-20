@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { execFile } from "node:child_process";
 import type { Policy } from "./domain.js";
 import { validateRoutines } from "./routines.js";
+import { PERSONA_FILES } from "./persona.js";
 import type { ExecutorConfig } from "./executor.js";
 
 /** The answers file schema — `dsh init --answers file.json` is the scriptable wizard. */
@@ -253,7 +254,7 @@ export function buildPolicy(a: InitAnswers): Policy {
   return policy;
 }
 
-export function buildExecutor(a: InitAnswers): ExecutorConfig {
+export function buildExecutor(a: InitAnswers, personaDir = "dsh/persona"): ExecutorConfig {
   return {
     command: a.agentCommand,
     repoDir: ".",
@@ -262,6 +263,7 @@ export function buildExecutor(a: InitAnswers): ExecutorConfig {
     maxWorkers: 1,
     blockedCommands: ["sudo", "rm -rf /", "curl | sh"],
     sandbox: a.sandbox,
+    personaDir,
   };
 }
 
@@ -271,6 +273,9 @@ export interface WriteResult {
   written: string[];
   backups: string[];
   skipped: string[];
+  /** v1.9 P1-1: persona files are owner content, not config — tracked separately and
+   *  NEVER overwritten, not even with --force (an init re-run must not revert edits). */
+  persona: { written: string[]; skipped: string[] };
 }
 
 function writeAtomic(path: string, content: string, force: boolean, out: WriteResult): void {
@@ -291,14 +296,27 @@ function writeAtomic(path: string, content: string, force: boolean, out: WriteRe
 }
 
 export function writeConfigs(dir: string, a: InitAnswers, force: boolean): WriteResult {
+  const personaRel = join(dir, "persona").replace(/\\/g, "/");
   const policy = buildPolicy(a);
-  const executor = buildExecutor(a);
+  const executor = buildExecutor(a, personaRel);
   const invalid = validateRoutines(policy);
   if (invalid.errors.length > 0) throw new Error(`template produced invalid routines: ${invalid.errors.join("; ")}`);
-  const out: WriteResult = { written: [], backups: [], skipped: [] };
+  const out: WriteResult = { written: [], backups: [], skipped: [], persona: { written: [], skipped: [] } };
   const header = (kind: string) => `{\n  "$comment": "dsh-super-agent ${kind} — written by dsh init; docs: ${DOCS_URL}",\n`;
   writeAtomic(join(dir, "policy.json"), header("policy") + JSON.stringify(policy, null, 2).slice(1) + "\n", force, out);
   writeAtomic(join(dir, "executor.json"), header("executor") + JSON.stringify(executor, null, 2).slice(1) + "\n", force, out);
+  for (const spec of PERSONA_FILES) {
+    const p = join(dir, "persona", spec.file);
+    if (existsSync(p)) {
+      out.persona.skipped.push(p); // owner content — kept as-is
+      continue;
+    }
+    mkdirSync(join(p, ".."), { recursive: true });
+    const tmp = `${p}.tmp-${process.pid}`;
+    writeFileSync(tmp, spec.template, "utf8");
+    renameSync(tmp, p);
+    out.persona.written.push(p);
+  }
   return out;
 }
 
@@ -310,6 +328,7 @@ export function nextSteps(a: InitAnswers, dir: string): string[] {
     "Next:",
     "  dsh doctor" + (a.repo ? ` --repo ${a.repo}` : "") + ` --config ${cfg} --executor-config ${exec}`,
     `  dsh watch${repoArg} --agent-login ${a.agentLogin || "<agent-login>"} --config ${cfg} --executor-config ${exec}`,
+    `  edit ${dir}/persona/*.md — who the agent is (composed into every worker prompt)`,
   ];
 }
 

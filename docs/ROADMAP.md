@@ -211,11 +211,11 @@ two-tier memory design exists to remove.
 
 无基建依赖、上手转化直接受益，服务于发射后的到达流量。
 
-- [ ] **P1-1 人格文件系统**（差距 #2）：`dsh init` 生成 `persona/` 目录（SOUL.md、IDENTITY.md、STYLE.md、RULES.md…九文件，全部 owner 可编辑），executor prepare 时按序组合进 worker 的 system prompt。拧劲：组合顺序与文件清单记入 ticket 上下文——人格也是可审计的输入。
-- [ ] **P1-2 CLI 交互通道**（#5）：终端作为第六通道，走同一张准入表（scope=`im_dm` 同语义）；本地开发者零 IM 配置即可体验完整回路（含数字审批）。拧劲：CLI DM 触发与微信触发在同一 decision 表里可对照。
-- [ ] **P1-3 token 门禁只读 panel**（#10）：`PANEL_TOKEN` env 存在时启用 Bearer 校验，只读面可安全暴露到非 loopback。默认行为不变（无 token = 仅 127.0.0.1）。
+- [x] **P1-1 人格文件系统**（差距 #2，#152/#153，v1.9.0）：`dsh init` 生成 `persona/` 目录（SOUL.md、IDENTITY.md、STYLE.md、RULES.md…九文件，全部 owner 可编辑），executor prepare 时按序组合进 worker 的 system prompt。拧劲：组合顺序与文件清单记入 ticket 上下文——人格也是可审计的输入。
+- [x] **P1-2 CLI 交互通道**（#5，#154/#155，v1.9.0）：终端作为第六通道，走同一张准入表（scope=`im_dm` 同语义）；本地开发者零 IM 配置即可体验完整回路（含数字审批）。拧劲：CLI DM 触发与微信触发在同一 decision 表里可对照。
+- [x] **P1-3 token 门禁只读 panel**（#10，#156/#157，v1.9.0）：`PANEL_TOKEN` env 存在时启用 Bearer 校验，只读面可安全暴露到非 loopback。默认行为不变（无 token = 仅 127.0.0.1）。
 
-验收：三条各带测试；README 双语补 "persona" 与 "CLI channel" 节；v1.9.0 发布。
+验收（已达成 2026-11-20）：三条各带测试；README 双语补 "persona" 与 "CLI channel" 节；v1.9.0 发布（tag v1.9.0，npm live）。
 
 ### Phase 2 — 平台覆盖（v1.10，~1.5 周）
 

@@ -115,6 +115,7 @@ Super-agent 文章里最锋利的实验发现:给单会话智能体配上 subage
 | 订阅旁路——开着的工单吸收开单人的后续评论作上下文;resume 把新消息带给 worker | ✅ v0.7 |
 | GitHub App 认证——installation token 每小时轮换、bot 身份;按人分阶段面板 | ✅ v0.6 |
 | 飞书 / Slack / 微信 / Telegram 通道——同一张准许表,同一回路(`im_dm` / `im_group`) | ✅ v0.8 |
+| iMessage 通道(macOS)——AppleScript 桥,handle 白名单先于准许表,群聊失败关闭 | ✅ v1.10 |
 | Watchdog——滞留工作问询 + needs-person 提醒,各一次,永不碰准入 | ✅ v0.9 |
 | IM 远程审批面——ops 私聊里的数字处置待决事项(双确认、时效、回执) | ✅ v1.1——[设计](docs/designs/im-approval-surface.md) |
 | Routines——定时 Source:cron + 逐 routine 时区 + 重启安全补跑,**照走准入控制** | ✅ v1.2——[设计](docs/designs/routines-source.md) |
@@ -226,6 +227,8 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 **Slack 通道(v0.8)。** 设置 `SLACK_BOT_TOKEN`(xoxb-)+ `SLACK_APP_TOKEN`(xapp-)后,`watch` 以 **Socket Mode** 接入 Slack——无需公网地址。一次性配置:在 [api.slack.com/apps](https://api.slack.com/apps) 建应用,启用 Socket Mode,订阅 `message.channels` / `message.groups` / `message.im` / `message.mpim` 事件,授予 `chat:write` 及这些事件所需的读权限。bot 自身的 user id 通过 `auth.test` 自动发现,频道内 @提及判定精确且零手工配置;私聊天然视为 addressing。同一准许表(`im_dm` / `im_group`),同一回路,回复发回频道。
 
 **微信通道(v0.8)。** 个人微信走 **iLink Bot Protocol**——微信自有域名(`ilinkai.weixin.qq.com`)上的 HTTP、类 Telegram Bot API;零逆向、零客户端 hook。一次性登录:`wechat-login` 保存二维码图片,你用微信扫码并在手机确认;凭证、长轮询游标、按线程的回复路由全部落进 engine db(与 watch 守护进程同一个 `--db`,自动挂载微信源)。私聊天然视为 addressing,产生 `im_dm` 触发;群消息产生 `im_group`,addressing 失败关闭(该协议的群文本无法可靠解析 @——allowedList 成员仍可产生 inferred)。回复原样回带路由 `context_token`——它决定回复落进哪个会话。会话过期(`-14`)清空状态并提示重登;长轮询每周期自我中止,永不阻塞 watch。文本优先:媒体消息体以 `[类型]` 占位(AES 媒体是后续切片)。协议参考:[wechatbot.dev/zh/protocol](https://www.wechatbot.dev/zh/protocol)。
+
+**iMessage 通道(v1.10)。** 个人手机通道,姿态刻意做成六个通道里最保守的:仅 macOS,经 AppleScript 桥接(`osascript` + Messages——不逆向协议、不翻 chat.db)。只有参与者 handle 在 `IMESSAGE_HANDLES` 白名单上的聊天才会被轮询——在一条骑在你**私人** Messages 上的通道里,白名单是准许表**之前**的一层准入;任意发件人无法在你的手机上开工单。DM 天然 addressed(`im_dm`);群聊与微信同构失败关闭(名单成员仍可经 listedNotAddressing 产出 inferred)。去重走近邻 ID 窗口:首次轮询只做基线、什么都不发,重启永不重放历史,你自己的发送永不触发。回复送回同一聊天;轮询丢失 Automation 权限时跳过该聊天,绝不跳过整个 cycle。
 
 **Telegram 通道(v0.8.1)。** 五个通道里最简单的:找 [@BotFather](https://t.me/BotFather) → `/newbot` → 把 token 设进 `TELEGRAM_BOT_TOKEN`——完成,没有建应用流程。bot 自身用户名经 `getMe` 自动发现,群内 @判定精确零配置;私聊天然视为 addressing。同一准许表,同一回路,回复走 `sendMessage`;`getUpdates` 的 offset 持久化在 engine db(重启安全),长轮询自我中止,永不阻塞 watch 周期。
 

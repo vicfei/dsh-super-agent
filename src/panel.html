@@ -234,6 +234,14 @@ function renderStatic() {
 function toggleLang() { LANG = LANG === "zh" ? "en" : "zh"; localStorage.setItem("dsh-lang", LANG); renderStatic(); render(); renderReview(); renderStream(); }
 renderStatic();
 
+// v1.9 P1-3: token-gated mode — a page opened with ?token= attaches it to every call,
+// so the read-only surface works from a plain browser bookmark.
+const __tok = new URLSearchParams(location.search).get('token');
+if (__tok) {
+  const __orig = window.fetch;
+  window.fetch = (u, o) => __orig(u, { ...o, headers: { ...((o && o.headers) || {}), Authorization: 'Bearer ' + __tok } });
+}
+
 async function verifyNow() {
   const v = await (await fetch('/api/events/verify')).json();
   alert(v.ok ? `chain intact — ${v.count} events` : `BROKEN at #${v.firstBadId}: ${v.reason}`);

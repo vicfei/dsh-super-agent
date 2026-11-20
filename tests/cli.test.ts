@@ -129,3 +129,14 @@ describe("CLI merge command (M6-1)", () => {
     expect(existsSync(join(dir, "policy.json"))).toBe(false); // no scaffold side effect
   });
 });
+
+describe("panel exposure rule (v1.9 P1-3, #156)", () => {
+  it("PANEL_HOST beyond loopback without PANEL_TOKEN is a loud refusal, not a silent serve", () => {
+    const r = spawnSync(tsx, [cli, "panel", "--db", join(dir, "e.db")], {
+      cwd: dir, encoding: "utf8",
+      env: { ...process.env, PANEL_HOST: "0.0.0.0" }, // no PANEL_TOKEN
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("refusing without PANEL_TOKEN");
+  });
+});

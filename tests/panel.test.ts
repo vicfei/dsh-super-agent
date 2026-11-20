@@ -364,3 +364,52 @@ describe("shutdown ordering (#144)", () => {
     rmSync(dir2, { recursive: true, force: true });
   });
 });
+
+describe("token-gated read-only panel (v1.9 P1-3, #156)", () => {
+  it("without a token the behavior is unchanged — and the state says so", async () => {
+    const s = (await (await fetch(`${base}/api/state`)).json()) as { readOnly: boolean };
+    expect(s.readOnly).toBe(false);
+  });
+
+  it("with a token every request carries it (Bearer or ?token=); wrong or absent → 401", async () => {
+    const srv = await startPanel(engine, 0, "127.0.0.1", undefined, { token: "s3cret-panel-token" });
+    const b = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    try {
+      expect((await fetch(`${b}/`)).status).toBe(401); // the page too — no anonymous peeking
+      expect((await fetch(`${b}/api/state`)).status).toBe(401);
+      expect((await fetch(`${b}/api/state`, { headers: { authorization: "Bearer wrong" } })).status).toBe(401);
+      expect((await fetch(`${b}/api/state?token=s3cret-panel-token`)).status).toBe(200);
+      const ok = await fetch(`${b}/api/state`, { headers: { authorization: "Bearer s3cret-panel-token" } });
+      expect(ok.status).toBe(200);
+      expect(((await ok.json()) as { readOnly: boolean }).readOnly).toBe(true);
+    } finally {
+      await new Promise((r) => srv.close(r));
+    }
+  });
+
+  it("acting endpoints refuse even with the right token — the surface is read-only by construction", async () => {
+    const srv = await startPanel(engine, 0, "127.0.0.1", undefined, { token: "s3cret-panel-token" });
+    const b = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    const auth = { "content-type": "application/json", authorization: "Bearer s3cret-panel-token" };
+    try {
+      for (const [path, body] of [
+        ["/api/mode", { mode: "auto" }],
+        ["/api/stop", { id: 1 }],
+        ["/api/promote", { id: 1 }],
+        ["/api/grant", { scope: "im_dm" }],
+      ] as const) {
+        const res = await fetch(`${b}${path}`, { method: "POST", headers: auth, body: JSON.stringify(body) });
+        expect(res.status).toBe(403);
+        expect(((await res.json()) as { error: string }).error).toContain("read-only");
+      }
+      expect(engine.policy()?.acceptMode).toBe("observe"); // nothing changed
+    } finally {
+      await new Promise((r) => srv.close(r));
+    }
+  });
+
+  it("the page attaches ?token= to every call — a bookmark with the token just works", async () => {
+    const html = await (await fetch(`${base}/`)).text();
+    expect(html).toContain("__tok"); // the fetch wrapper
+  });
+});

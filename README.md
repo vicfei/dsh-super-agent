@@ -248,6 +248,8 @@ A person's **stop is final**: a stopped ticket is never resurrected by later mes
 
 And the panel (`npm run panel`, localhost — the v1.3 dashboard) shows only what needs a person — needs-person tickets, observe records marked *would accept*, the full decision log, the accept-mode switch (switching to `auto` asks you to confirm), routines with their next fire, the watchdog vitals, the doctor's checks rendered green/yellow/red, and the audit depth — every decision opens to its full trigger, every ticket to its run history and approval trail:
 
+**Read-only beyond loopback (v1.9).** Set `PANEL_TOKEN` and the panel becomes a token-gated, **read-only** surface: every request (the page included) requires the Bearer token (header, or `?token=…` — the page attaches it to every call, so `http://host:8787/?token=…` just works), acting endpoints (`/api/mode | stop | promote | grant | revoke`) refuse with 403, and `PANEL_HOST` may then bind beyond loopback (e.g. `0.0.0.0`) — safe *because* it is read-only **and** authenticated. Binding beyond loopback **without** a token is a hard, loud refusal at startup. No token set: byte-for-byte today's loopback panel.
+
 ## Comparison
 
 | | dispatch to CLI agents | worktrees | admission table | observe mode | host-enforced authz | IM approval digits | routines through the gate | one-command onboarding |

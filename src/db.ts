@@ -95,6 +95,19 @@ function txOf<T>(db: NodeSqliteDb, fn: () => T): T {
   }
 }
 
+/** node:sqlite's DatabaseSync validates its options argument when PRESENT — pass it only
+ *  when needed (an explicit undefined tripped validateObject on 22.x; live finding, CI
+ *  2026-11-20). Same story for better-sqlite3's { readonly }. */
+function nodeOpen(path: string, readonly: boolean | undefined): NodeSqliteDb {
+  const Ctor = nodeSqlite!.DatabaseSync;
+  return readonly ? new Ctor(path, { readOnly: true }) : new Ctor(path);
+}
+
+function betterOpen(path: string, readonly: boolean | undefined): NodeSqliteDb & { pragma(s: string): unknown } {
+  const Ctor = loadBetterSqlite();
+  return readonly ? new Ctor(path, { readonly: true }) : new Ctor(path);
+}
+
 function wrapNode(db: NodeSqliteDb): SqlDb {
   return {
     backend: "node-sqlite",
@@ -127,13 +140,13 @@ export function openDatabase(path: string, opts: { readonly?: boolean } = {}): S
     if (!nodeSqliteAvailable()) {
       throw new Error("DSH_DB_BACKEND=node but node:sqlite is unavailable on this runtime (need Node ≥ 22.5 with --experimental-sqlite, or ≥ 22.13 unflagged)");
     }
-    return wrapNode(new nodeSqlite!.DatabaseSync(path, opts.readonly ? { readOnly: true } : undefined));
+    return wrapNode(nodeOpen(path, opts.readonly));
   }
   if (forced === "better" || forced === "better-sqlite3") {
     return wrapBetter(new (loadBetterSqlite())(path, opts.readonly ? { readonly: true } : undefined));
   }
   if (nodeSqliteAvailable()) {
-    return wrapNode(new nodeSqlite!.DatabaseSync(path, opts.readonly ? { readOnly: true } : undefined));
+    return wrapNode(nodeOpen(path, opts.readonly));
   }
-  return wrapBetter(new (loadBetterSqlite())(path, opts.readonly ? { readonly: true } : undefined));
+  return wrapBetter(betterOpen(path, opts.readonly));
 }

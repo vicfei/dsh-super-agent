@@ -5,6 +5,7 @@
 // watchdog's health vitals. Reads only; writes stay on the acting surfaces.
 
 import { createServer, type Server } from "node:http";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Policy } from "./domain.js";
 import type { Engine } from "./engine.js";
@@ -51,6 +52,8 @@ export interface PanelState {
   /** v1.5 slice C: the machine at a glance — armed sources and lifetime gate verdicts. */
   sources: string[];
   gateStats: { accept: number; ignore: number; wouldAccept: number };
+  /** v1.9 P1-3: true when the panel runs token-gated — the served surface is read-only. */
+  readOnly: boolean;
 }
 
 /** The full, untruncated trigger behind a decision row — the audit depth (v1.3 slice 3). */
@@ -72,7 +75,14 @@ function dbTriggerOf(engine: Engine, id: string) {
  *  serving after engine.close() and one late /api/state request hung SIGTERM forever). */
 export type PanelServer = Server & { shutdown(): void };
 
-export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doctorCtx?: PanelDoctorContext): Promise<PanelServer> {
+/** v1.9 P1-3: the token gate. Hash both sides to a fixed length, then compare timing-safe —
+ *  the read-only surface must not leak the token byte-by-byte through response timing. */
+function tokenMatches(got: string, want: string): boolean {
+  const h = (s: string) => createHash("sha256").update(s).digest();
+  return timingSafeEqual(h(got), h(want));
+}
+
+export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doctorCtx?: PanelDoctorContext, guard?: { token: string }): Promise<PanelServer> {
   let doctorCache: { at: number; report: DoctorReport } | null = null;
   const doctorNow = async (): Promise<DoctorReport | null> => {
     if (!doctorCtx) return null;
@@ -110,6 +120,16 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
       res.end(body);
     };
+    // v1.9 P1-3: token-gated mode — EVERY request (page included) carries the Bearer token
+    // (header, or ?token= for the first page load / curl). Without the gate, behavior is
+    // byte-for-byte today's loopback panel.
+    if (guard && !tokenMatches(
+      req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? "",
+      guard.token,
+    )) {
+      send(401, "text/plain; charset=utf-8", "panel: Bearer token required (PANEL_TOKEN)");
+      return;
+    }
 
     if (req.method === "GET" && url.pathname === "/") {
       send(200, "text/html; charset=utf-8", PAGE);
@@ -165,6 +185,7 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
           return { accept: get("accept", 0), ignore: get("ignore", 0), wouldAccept: get("ignore", 1) };
         })(),
         doctor: await doctorNow(),
+        readOnly: Boolean(guard),
       };
       send(200, "application/json", JSON.stringify(state));
       return;
@@ -214,6 +235,12 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       }))));
     }
     if (req.method === "POST" && (url.pathname === "/api/mode" || url.pathname === "/api/stop" || url.pathname === "/api/promote" || url.pathname === "/api/grant" || url.pathname === "/api/revoke")) {
+      // v1.9 P1-3: the token-gated surface is read-only by construction — acting stays on
+      // the loopback panel (or the IM approval surface), never on an exposed one.
+      if (guard) {
+        send(403, "application/json", JSON.stringify({ error: "read-only surface: acting endpoints are disabled when PANEL_TOKEN is set" }));
+        return;
+      }
       // Loopback is not a CSRF exemption: a malicious page in ANY browser tab can fire a
       // no-cors text/plain POST at 127.0.0.1. Refuse cross-origin requests outright and
       // require the JSON content type (no-cors simple requests cannot send it).

@@ -233,6 +233,19 @@ function loadExecutorConfig(): ExecutorConfig {
   }
 }
 
+/** v1.9 P1-3: the panel's exposure rule — beyond loopback requires PANEL_TOKEN (the
+ *  surface is then read-only + Bearer-gated). Refusing loudly beats silently serving a
+ *  writable panel to the LAN; no token = byte-for-byte today's behavior. */
+function panelBind(): { host: string; guard: { token: string } | undefined } {
+  const host = process.env.PANEL_HOST ?? "127.0.0.1";
+  const token = process.env.PANEL_TOKEN;
+  const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
+  if (!loopback && !token) {
+    die(`PANEL_HOST=${host} is beyond loopback — refusing without PANEL_TOKEN (set it for the read-only, Bearer-gated surface)${WITH_HELP}`);
+  }
+  return { host, guard: token ? { token } : undefined };
+}
+
 function buildAssessor(): Assessor {
   if (args.assessment === "decision") {
     // BYO-judge (#133): judge flags win, then JUDGE_* env, then the assess endpoint
@@ -348,13 +361,14 @@ try {
 
     if (!args["no-panel"]) {
       const port = Number(process.env.PANEL_PORT ?? 8787);
+      const bind = panelBind();
       const { startPanel } = await import("./panel.js");
-      panelServer = await startPanel(engine, port, "127.0.0.1", {
+      panelServer = await startPanel(engine, port, bind.host, {
         executor: { command: execCfg.command, sandbox: execCfg.sandbox, prepare: execCfg.prepare },
         repo: args.repo,
         dbPath: args.db,
-      });
-      console.log(`watch: panel on http://127.0.0.1:${port}`);
+      }, bind.guard);
+      console.log(`watch: panel on http://${bind.host}:${port}${bind.guard ? " (read-only · Bearer: PANEL_TOKEN)" : ""}`);
     }
     console.log(`watch: polling ${args.repo} every ${args.interval ?? 30}s (±20% jitter) — Ctrl-C stops after the current cycle`);
 
@@ -510,8 +524,9 @@ try {
     const doctorExec = existsSync(args["executor-config"])
       ? (() => { try { const c = JSON.parse(readFileSync(args["executor-config"], "utf8")) as { command?: string; sandbox?: { enabled?: boolean; allowNetwork?: boolean }; prepare?: string }; return c.command ? { command: c.command, sandbox: c.sandbox, prepare: c.prepare } : undefined; } catch { return undefined; } })()
       : undefined;
-    const server = await startPanel(engine, port, "127.0.0.1", { executor: doctorExec, repo: args.repo, dbPath: args.db });
-    console.log(`panel: http://127.0.0.1:${port} (db ${args.db}) — Ctrl-C to stop`);
+    const bind = panelBind();
+    const server = await startPanel(engine, port, bind.host, { executor: doctorExec, repo: args.repo, dbPath: args.db }, bind.guard);
+    console.log(`panel: http://${bind.host}:${port} (db ${args.db})${bind.guard ? " read-only · Bearer: PANEL_TOKEN" : ""} — Ctrl-C to stop`);
     const shutdown = () => {
       server.shutdown(); // 503-guard + stop accepting + drop idle keep-alives (#144)
       engine.close(); // safe now: draining requests bounce off the guard, never reach the DB

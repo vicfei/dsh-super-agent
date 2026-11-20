@@ -1,3 +1,23 @@
+## 1.10.0 — the everywhere release
+
+- macOS platform parity (#160/#161): the seatbelt profile finally EXECUTES — a real
+  confinement test runs in CI on both wrappers (bwrap on linux runners, sandbox-exec on
+  macos runners, its first real execution anywhere), with the /var → /private/var symlink
+  alias fixed (allow both spellings) and a macos-latest × node matrix. Doctor's sandbox
+  check is platform-aware (`wrapperPresent`; legacy `bwrapPresent` still accepted).
+- iMessage channel (#162/#163): macOS-only AppleScript bridge, deliberately the most
+  conservative channel — a handle watchlist (IMESSAGE_HANDLES) is an admission layer
+  BEFORE the admission table; groups fail closed (WeChat posture); dedup is a recent-id
+  window (first poll baselines, restarts never replay); isFromMe never triggers; the
+  osascript runner is injected so the bridge tests on any OS. `dsh watch` arms it
+  darwin-only, loudly.
+- Zero native dependencies (#164/#165): node:sqlite is the default engine backend where
+  the runtime has it (Node ≥ 22.5 flagged / ≥ 22.13 unflagged), better-sqlite3 the
+  fallback (now optionalDependencies — `npm install` succeeds without a compile chain);
+  DSH_DB_BACKEND pins either. The adapter normalizes the contract (undefined params throw
+  identically; one flat BEGIN·COMMIT transaction per command) and CI proves equivalence —
+  the same full suite on both backends (node 20 fallback, 22 auto, 24 pinned).
+
 ## 1.9.0 — the affinity release
 
 - Persona files (#152/#153): nine owner-edited markdown files under `persona/` (SOUL, IDENTITY,

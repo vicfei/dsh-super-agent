@@ -173,6 +173,8 @@ npx @vicfei/dsh-super-agent watch --repo you/your-repo --agent-login your-login 
 
 Non-interactive installs: `dsh init --template minimal|dogfood` (CI-testable) or `--answers file.json`. Every command also `--help`s itself.
 
+**No IM at hand? The terminal is a channel too (v1.9).** `dsh chat` turns your terminal into the sixth channel with zero IM configuration: every line you type becomes an `im_dm` trigger through the **same admission table** — an allowed-list member's line is explicit and goes to work, an unlisted login is gated to ignore by the same cell, no local shortcut. Tickets run in the worktree right there and the report prints back; the chat thread is a full ops thread — `?` is the status card, digits resolve pending approvals (same state machine, same receipts, same double-key stop). CLI triggers and WeChat triggers land in the **same decision table**, so one audit trail compares across channels. `--as <login>` picks the login you speak as (default: your first allowedList entry).
+
 Or the manual path from a clone — point the poll-and-classify loop at any repo and watch the gate work (observe mode by default: **nothing executes**, inferred candidates are only recorded as `would accept`):
 
 ```bash

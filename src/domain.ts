@@ -8,8 +8,9 @@ export interface Actor {
   isBot: boolean;
 }
 
-/** Where a Trigger came from. `timer` = the clock (v1.2 routines) — a trigger like any other. */
-export type TriggerSource = "github" | "feishu" | "slack" | "wechat" | "telegram" | "timer";
+/** Where a Trigger came from. `timer` = the clock (v1.2 routines) — a trigger like any other;
+ * `cli` = the terminal chat (v1.9) — an im_dm trigger like any other, same admission table. */
+export type TriggerSource = "github" | "feishu" | "slack" | "wechat" | "telegram" | "timer" | "cli";
 
 /** One immutable event with the Source's own metadata. Unit of audit and idempotence. */
 export interface Trigger {

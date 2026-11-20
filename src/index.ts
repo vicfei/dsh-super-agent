@@ -56,6 +56,7 @@ export {
   type WriteResult,
 } from "./init.js";
 export { PERSONA_FILES, PERSONA_CHAR_BUDGET, composePersona, type PersonaFileSpec, type PersonaBundle } from "./persona.js";
+export { runChat, chatTrigger, chatThreadId, CliReplyChannel, type ChatDeps, type ChatOptions } from "./chat.js";
 export { runDoctor, formatDoctor, envReferences, type DoctorInput, type DoctorReport, type Check, type CheckStatus } from "./doctor.js";
 export { wechatLoginWeb, LOGIN_WEB_PAGE, type LoginWebHandle, type LoginWebOptions } from "./wechat-login-web.js";
 export { runStats, formatStats, type StatsReport, type GateStats, type RoutineStats } from "./stats.js";

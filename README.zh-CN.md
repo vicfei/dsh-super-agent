@@ -174,6 +174,8 @@ npx @vicfei/dsh-super-agent watch --repo you/your-repo --agent-login your-login 
 
 无人值守安装:`dsh init --template minimal|dogfood`(可进 CI)或 `--answers file.json`。所有命令自带 `--help` 友好报错。
 
+**手边没有 IM?终端也是一条通道(v1.9)。** `dsh chat` 把终端变成第六通道,零 IM 配置:你敲的每一行都成为 `im_dm` 触发,过**同一张准入表**——allowed 成员的一行是 explicit、照常开工,不在名单的登录被同一个单元格拦成 ignore,没有"因为是本地"的捷径。工单当场在 worktree 里跑、报告打回终端;聊天线程同时是完整的 ops 线程——`?` 出状态卡,数字审批待决(同一个状态机、同一套回执、同样的停止双确认)。CLI 触发与微信触发落**同一张 decision 表**,一条审计链跨通道可对照。`--as <login>` 指定你以谁的身份说话(默认取 allowedList 第一项)。
+
 或者从克隆走手工路径——把轮询+分类回路指向任意仓库,看门禁工作(默认 observe 模式:**什么都不执行**,inferred 候选只记录为 `would accept`):
 
 ```bash

@@ -76,6 +76,8 @@ function parseOrDie() {
         "probe-network": { type: "boolean", default: false },
         // wechat-login --web (v1.3)
         web: { type: "boolean", default: false },
+        // chat (v1.9 P1-2): the login the operator speaks as
+        as: { type: "string" },
       },
     });
   } catch (e) {
@@ -91,7 +93,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "watch", "tickets", "panel", "fleet", "merge", "health", "stats", "review", "routines", "events", "ops", "ops", "init", "doctor", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "chat", "watch", "tickets", "panel", "fleet", "merge", "health", "stats", "review", "routines", "events", "ops", "ops", "init", "doctor", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -446,6 +448,36 @@ try {
     if (reports.length === 0) console.log("no claimable tickets");
     for (const r of reports) {
       console.log(`#${r.ticketId} [${r.outcome}] ${r.detail}`);
+    }
+  } else if (command === "chat") {
+    // v1.9 P1-2 (#154): the terminal as a sixth channel — same admission table, same digits.
+    const policy = readPolicyConfig();
+    engine.setPolicyIfChanged(policy);
+    const login = (args.as ?? policy.allowedList.find((l) => l !== "YOUR_LOGIN") ?? "").trim();
+    if (!login) die(`no login to speak as: pass --as <login> (an allowedList member)${WITH_HELP}`);
+    const execCfg = loadExecutorConfig();
+    const assessor = buildAssessor();
+    const { runChat } = await import("./chat.js");
+    const readline = await import("node:readline/promises");
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      await runChat({
+        engine, policy,
+        executor: new Executor(execCfg),
+        repo: args.repo ?? "local/chat",
+        login,
+        // same rule as watch: explicit never waits, inferred consults the slow path
+        assessment: async (t) => {
+          const gate = evaluateGate(policy, t);
+          return gate.strength === "inferred" ? assessor.assess(t) : "positive";
+        },
+        deps: {
+          prompt: (q) => rl.question(q).catch(() => null), // EOF (Ctrl-D) ends the chat
+          print: (l) => console.log(l),
+        },
+      });
+    } finally {
+      rl.close();
     }
   } else if (command === "tickets") {
     // argv: cli tickets stop <id> → positionals ["tickets", "stop", "<id>"]

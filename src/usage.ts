@@ -13,6 +13,7 @@ Usage: dsh-super-agent <command> [options]
 Commands:
   poll      one pass: poll GitHub → gate → (assessment) → record; --post also drains queued replies
   work      claim queued tickets → run the executor in a worktree → report
+  chat      the terminal as a sixth channel: REPL → gate → work → report, digits approve
   watch     poll + work + panel as one daemon (Ctrl-C stops after the current cycle)
   tickets   list tickets; "tickets stop <id>" ends one
   panel     serve the awaiting-human panel (http://127.0.0.1:8787)
@@ -45,6 +46,7 @@ Common options:
   --force                   init: overwrite existing configs (leaves .bak.<ts> backups)
   --answers <file>          init: scripted answers (schema = the template file)
   --probe-network           doctor: whoami / repo permission / channel liveness (network)
+  --as <login>              chat: the login you speak as (should be an allowedList member)
 
 Environment: GITHUB_TOKEN, or GitHub App auth (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY[_PATH],
 optional GITHUB_APP_INSTALLATION_ID); Feishu channel (FEISHU_APP_ID + FEISHU_APP_SECRET,

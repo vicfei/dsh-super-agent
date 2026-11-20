@@ -202,3 +202,50 @@ two-tier memory design exists to remove.
 - Multi-instance / distributed operation
 - Cross-source identity mapping
 - ~~Being a DSH plugin~~ (v0 non-goal — revisited 2026-11: a plugin-form *distribution bridge* is a v1.6 candidate; the daemon itself stays independent)
+
+## Catch-up phases — 对齐 LofiSu 差距的全量实施计划（2026-11-19 定，owner 批准"分阶段、全实现"）
+
+> 来源：与 LofiSu/dsh-super-agent 的逐条对账（11 项差距）。原则：**每一项都实现，但每一项都带我们的制度拧劲**——不是复制功能，是把功能装进准入/证据的架构里。
+
+### Phase 1 — 亲和力件（v1.9，~1 周）
+
+无基建依赖、上手转化直接受益，服务于发射后的到达流量。
+
+- [ ] **P1-1 人格文件系统**（差距 #2）：`dsh init` 生成 `persona/` 目录（SOUL.md、IDENTITY.md、STYLE.md、RULES.md…九文件，全部 owner 可编辑），executor prepare 时按序组合进 worker 的 system prompt。拧劲：组合顺序与文件清单记入 ticket 上下文——人格也是可审计的输入。
+- [ ] **P1-2 CLI 交互通道**（#5）：终端作为第六通道，走同一张准入表（scope=`im_dm` 同语义）；本地开发者零 IM 配置即可体验完整回路（含数字审批）。拧劲：CLI DM 触发与微信触发在同一 decision 表里可对照。
+- [ ] **P1-3 token 门禁只读 panel**（#10）：`PANEL_TOKEN` env 存在时启用 Bearer 校验，只读面可安全暴露到非 loopback。默认行为不变（无 token = 仅 127.0.0.1）。
+
+验收：三条各带测试；README 双语补 "persona" 与 "CLI channel" 节；v1.9.0 发布。
+
+### Phase 2 — 平台覆盖（v1.10，~1.5 周）
+
+把"装不上/用不了"的地域清零。
+
+- [ ] **P2-1 macOS sandbox-exec**（#8）：沙箱层平台抽象（Linux=bwrap 不变；macOS=seatbelt profile），doctor 自动探测并报告各自平台的可用性；CI 加 macos-latest 矩阵位。
+- [ ] **P2-2 iMessage 通道**（#7）：macOS-only，AppleScript 桥；与 P2-1 同期（同一平台故事）。`im_dm` 准入语义复用。
+- [ ] **P2-3 零原生依赖**（#11）：DB 层抽象——Node ≥ 22.5 走 `node:sqlite`，旧环境回退 better-sqlite3；`npm i` 在无编译链的机器上也能起。拧劲：两种后端跑同一套 375 测试，行为等价写入 CI。
+
+验收：macOS 上从 install 到 work 全流程冒烟一次（owner 的 Mac 或 CI）；v1.10.0。
+
+### Phase 3 — 委托边治理（v2.0 旗舰，~2 周，先设计后实现）
+
+治理论题的下一格：从"管自家 agent"到"管委托边"。**这是唯一一个 LofiSu 只做了功能、我们要做成制度的项。**
+
+- [ ] **P3-1 A2A 通道**（#6，设计文档先行）：入站——外部 agent 经 A2A 协议提交任务 = 新 scope `a2a` 的 trigger，过准入表、落账本；出站——replies 走 A2A 回。Agent Card 声明我们的能力面。拧劲：跨 agent 委托首次可审计——谁的外部 agent、凭什么 scope、每次委托一行哈希链。
+- [ ] **P3-2 Worker 派生团队**（#1）：worker 经文件约定（`.dsh/delegate.md`，同 approval-request 的单向模式）申请派生子工单；引擎开**子 ticket**（parent 链接、独立账本行、继承 scope 准入）而非 worker 自己乱拉进程。拧劲：团队扩张本身过闸——LofiSu 给了 worker 自由，我们给自由上账。
+
+验收：A2A 双向冒烟 + 子工单端到端（含"子工单失败汇入父工单 needs-person"路径）；v2.0.0 + 发射帖路线图兑现素材。
+
+### Phase 4 — 上下文与记忆纵深（v2.1，~2-3 周）
+
+重基建项殿后，且必须保住"记忆可审计"的既有立场。
+
+- [ ] **P4-1 上下文外溢 + `read_object`**（#4）：大产出落 `objects/`、上下文里留引用句柄，worker 按需取回；clip 从"截断"升级为"引用化"。账本记录 object 写入事件。
+- [ ] **P4-2 harness 供 worker MCP 工具**（#9）：executor 配置 `mcpServers`，透传给支持 MCP 的 CLI worker（claude/codex 原生形态）；对非 MCP worker 提供 host 侧 shim。拧劲：MCP server 清单进 doctor（工具面可体检）。
+- [ ] **P4-3 混合语义记忆**（#3）：BYO-embedding（复用 BYOM 哲学——任意 OpenAI 兼容 `/v1/embeddings` 端点）；热层=近期蒸馏，冷层=全量带混合检索（词汇 BM25 先行、语义可选开启）；`memoryPolicyOf` 增档位。立场不变：默认关、开了也要在账本留"注入了什么"的痕迹。
+
+验收：召回质量用既有 dogfood 工单回放对比；v2.1.0。
+
+### 排序依据
+
+亲和力件先行（转化发射流量）→ 平台覆盖（消灭装不上）→ 委托边治理（旗舰，论题延伸）→ 记忆纵深（最重、且与可审计性有张力需最细设计）。每阶段一个 minor 版本，均独立可发布；Phase 3 的设计文档随 v1.9 同批出（发射帖的 roadmap 预告位）。

@@ -6,7 +6,7 @@
 //   - a person's message on their own thread resumes an ended (person-stopped) Ticket
 //   - weakening policy does not kill open Tickets; resume revalidates against current policy
 
-import Database from "better-sqlite3";
+import { openDatabase, type SqlDb } from "./db.js";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { clipReply } from "./clip.js";
@@ -220,11 +220,11 @@ const BACKOFF_BASE_MS = 5_000;
 const BACKOFF_CAP_MS = 300_000;
 
 export class Engine {
-  readonly db: Database.Database;
+  readonly db: SqlDb;
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
-    this.db = new Database(path);
+    this.db = openDatabase(path);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.db.pragma("busy_timeout = 5000"); // panel's quick writes alongside poll
@@ -477,7 +477,7 @@ export class Engine {
       for (const [kind, st] of Object.entries(nextBySource ?? {})) {
         savePositions.run(`positions:${kind}`, JSON.stringify(st.positions));
       }
-    })();
+    });
 
     return report;
   }

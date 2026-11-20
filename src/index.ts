@@ -56,6 +56,7 @@ export {
   type WriteResult,
 } from "./init.js";
 export { PERSONA_FILES, PERSONA_CHAR_BUDGET, composePersona, type PersonaFileSpec, type PersonaBundle } from "./persona.js";
+export { openDatabase, nodeSqliteAvailable, type SqlDb, type SqlStatement, type DbBackend } from "./db.js";
 export { runChat, chatTrigger, chatThreadId, CliReplyChannel, type ChatDeps, type ChatOptions } from "./chat.js";
 export { ImessageSource, ImessageReplyChannel, MemoryImessageStore, defaultOsascript, parseChatScan, parseMessageLine, imessageTriggerFromMessage, sendScript, recentMessagesScript, SCAN_CHATS_SCRIPT, asQuoted, type OsascriptRunner, type ImessageStore, type ImessageChat, type ImessageSourceOptions } from "./imessage.js";
 export { runDoctor, formatDoctor, envReferences, type DoctorInput, type DoctorReport, type Check, type CheckStatus } from "./doctor.js";

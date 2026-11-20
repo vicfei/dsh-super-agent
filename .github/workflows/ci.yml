@@ -9,7 +9,15 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest] # P2-1: the macOS story runs for real (sandbox-exec, darwin paths)
         node: [20, 22]
+        # P2-3 backend equivalence: node 20 falls back to better-sqlite3, latest 22.x has
+        # unflagged node:sqlite (auto path) — and node 24 pins the zero-native-dep backend.
+        include:
+          - os: ubuntu-latest
+            node: 24
+            db-backend: node
     runs-on: ${{ matrix.os }}
+    env:
+      DSH_DB_BACKEND: ${{ matrix.db-backend }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

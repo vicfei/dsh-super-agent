@@ -182,6 +182,8 @@ npx @vicfei/dsh-super-agent watch --repo you/your-repo --agent-login your-login 
 ```bash
 git clone https://github.com/vicfei/dsh-super-agent && cd dsh-super-agent
 npm install
+# Node ≥ 22.13 零原生依赖:node:sqlite 是默认引擎 DB 后端;better-sqlite3(可选依赖)是
+# 旧运行时与无编译链机器的回退——两种情况 `npm install` 都能成;DSH_DB_BACKEND=better|node 可钉死。
 cp examples/policy.json policy.json   # 把你的登录名放进 allowedList(也可跳过——首跑会自动生成)
 export GITHUB_TOKEN=ghp_…             # PAT:repo 读权限(回复上线后需评论写权限)
 npm run poll -- --repo you/your-repo --agent-login your-login --config policy.json

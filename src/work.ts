@@ -185,6 +185,15 @@ export async function runWork(
     let result: ExecutorResult | undefined;
     try {
       result = await executor.run({ id: t.id, threadId: t.threadId }, { body: t.body, author: t.author }, repo, injectable);
+      // v1.9 P1-1: persona is an auditable input — one ledger row per dispatch pins the
+      // file list, order and hash of what the worker actually saw.
+      if (result.persona) {
+        engine.ledger.emit("persona.dispatch", {
+          ticketId: t.id, assignmentId,
+          dir: result.persona.dir, files: result.persona.files,
+          omitted: result.persona.omitted, hash: result.persona.hash,
+        });
+      }
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       engine.endAssignment(assignmentId, null, false, detail);

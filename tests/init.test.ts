@@ -108,7 +108,9 @@ describe("runWizard (interactive, scripted)", () => {
     expect(a.written).toHaveLength(2);
     expect(b.written).toHaveLength(2);
     for (const name of ["policy.json", "executor.json"]) {
-      expect(readFileSync(join(dir, "a", name), "utf8")).toBe(readFileSync(join(dir, "b", name), "utf8"));
+      // personaDir embeds the write dir (v1.9 P1-1) — normalize it before the byte compare
+      const norm = (s: string) => s.replaceAll(join(dir, "a"), "DIR").replaceAll(join(dir, "b"), "DIR");
+      expect(norm(readFileSync(join(dir, "a", name), "utf8"))).toBe(norm(readFileSync(join(dir, "b", name), "utf8")));
     }
   });
 });
@@ -169,9 +171,11 @@ describe("writeConfigs", () => {
     }
   });
 
-  it("atomic: no .tmp leftovers", () => {
+  it("atomic: no .tmp leftovers (config files and persona alike)", () => {
     writeConfigs(join(dir, "t"), TEMPLATES.minimal, true);
-    expect(readdirSync(join(dir, "t")).sort()).toEqual(["executor.json", "policy.json"]);
+    expect(readdirSync(join(dir, "t")).sort()).toEqual(["executor.json", "persona", "policy.json"]);
+    const leftovers = readdirSync(join(dir, "t", "persona")).filter((f) => f.includes(".tmp"));
+    expect(leftovers).toEqual([]);
   });
 });
 

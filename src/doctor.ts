@@ -28,7 +28,12 @@ export interface DoctorInput {
   dbPath?: string;
   /** Returns "" when the bin is not on PATH, else the first line of `<bin> --version`. */
   agentVersion?: (bin: string) => Promise<string>;
+  /** Confinement wrapper present (bwrap on linux, sandbox-exec on macOS — P2-1). */
+  wrapperPresent?: boolean;
+  /** @deprecated pre-v1.10 name of wrapperPresent; still accepted. */
   bwrapPresent?: boolean;
+  /** Platform for wrapper messaging; injectable so tests stay offline. Default: the real one. */
+  platform?: string;
   /** kv read over the engine db (wechat auth presence), when a db is given. */
   wechatAuthPresent?: boolean;
   now?: () => Date;
@@ -127,14 +132,23 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
     add("agent-cli", "info", "agent CLI: no executor config given (--executor-config)");
   }
 
-  // sandbox
+  // sandbox — the wrapper is platform-selected (P2-1, #160): bwrap on linux, the built-in
+  // sandbox-exec on macOS; the check reports the platform's own story, not a linux-only one.
   const sandboxOn = input.executor?.sandbox?.enabled === true;
+  const platform = input.platform ?? process.platform;
+  const wrapperPresent = input.wrapperPresent ?? input.bwrapPresent ?? false;
+  const wrapperName = platform === "darwin" ? "sandbox-exec" : "bwrap";
+  const installHint = platform === "darwin"
+    ? "sandbox-exec ships with macOS — a missing binary means a broken system"
+    : "install bubblewrap (apt install bubblewrap) or disable";
   if (sandboxOn) {
-    add("sandbox", input.bwrapPresent ? "ok" : "fail", input.bwrapPresent ? `sandbox: wrapper present; allowNetwork=${input.executor?.sandbox?.allowNetwork === true}` : "sandbox: enabled in config but the confinement wrapper is NOT found — confinement is a claim, not a fact; install bubblewrap (linux) or disable");
-  } else if (input.bwrapPresent) {
-    add("sandbox", "warn", "sandbox: wrapper present but disabled in executor config — confinement is the norm, off is the exception");
+    add("sandbox", wrapperPresent ? "ok" : "fail", wrapperPresent
+      ? `sandbox: ${wrapperName} present; allowNetwork=${input.executor?.sandbox?.allowNetwork === true}`
+      : `sandbox: enabled in config but ${wrapperName} is NOT found — confinement is a claim, not a fact; ${installHint}`);
+  } else if (wrapperPresent) {
+    add("sandbox", "warn", `sandbox: ${wrapperName} present but disabled in executor config — confinement is the norm, off is the exception`);
   } else {
-    add("sandbox", "info", "sandbox: off (no confinement wrapper found; install bubblewrap on linux)");
+    add("sandbox", "info", `sandbox: off (no confinement wrapper found; ${platform === "darwin" ? "sandbox-exec ships with macOS" : "install bubblewrap on linux"})`);
   }
 
   // env references

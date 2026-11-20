@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -198,5 +198,29 @@ describe("runWork", () => {
     expect(r.resumed).toBe(1);
     expect(engine.tickets()[0].stage).toBe("queued"); // re-claimable
     expect(engine.claimQueued(5)).toHaveLength(1);
+  });
+});
+
+describe("real confinement (P2-1, #160) — the wrapper is a fact, not a claim", () => {
+  const WRAPPER = process.platform === "darwin" ? "sandbox-exec" : "bwrap";
+  const wrapperAvailable = spawnSync("/bin/sh", ["-c", `command -v ${WRAPPER}`], { stdio: "ignore" }).status === 0;
+
+  // Runs for real in CI: bwrap on ubuntu runners, the seatbelt profile on macos runners —
+  // the macOS profile's first actual execution anywhere.
+  it.skipIf(!wrapperAvailable)(`under ${WRAPPER}: worktree writable, $HOME read-only, secrets stripped`, async () => {
+    const exec = new Executor(cfg({
+      command: `echo inside > "$DSH_DIR/probe" && (touch "$HOME/.dsh-sandbox-probe" 2>/dev/null && echo home-writable || echo home-denied) && echo "env=\${SANDBOX_SECRET_PROBE:-stripped}"`,
+      sandbox: { enabled: true, allowNetwork: false },
+    }));
+    process.env.SANDBOX_SECRET_PROBE = "leak-me";
+    try {
+      const r = await exec.run({ id: 21, threadId: "github:o/r/issues/5" }, { body: "b", author: "alice" }, "o/r");
+      expect(r.exitCode, `confined run output:\n${r.output}`).toBe(0);
+      expect(r.output).toContain("home-denied"); // outside the worktree bind: read-only root holds
+      expect(r.output).toContain("env=stripped"); // the env allowlist holds — no ambient secrets
+      expect(existsSync(join(r.worktree, "probe"))).toBe(true); // inside the bind: work proceeds
+    } finally {
+      delete process.env.SANDBOX_SECRET_PROBE;
+    }
   });
 });

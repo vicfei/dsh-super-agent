@@ -173,7 +173,7 @@ if (command === "doctor") {
     executor: executorCfg,
     repo: args.repo,
     dbPath: args.db,
-    bwrapPresent: bwrap.code === 0 && bwrap.stdout.trim() !== "",
+    wrapperPresent: bwrap.code === 0 && bwrap.stdout.trim() !== "",
     agentVersion: async (bin) => {
       const r = await shellProbe(bin, ["--version"], 5000);
       return r.code === 0 ? r.stdout.trim().split("\n")[0] : "";

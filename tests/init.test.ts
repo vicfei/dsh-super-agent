@@ -180,8 +180,11 @@ describe("writeConfigs", () => {
 });
 
 describe("applyRuntimeDetection", () => {
-  it("auto-enables the sandbox when bwrap exists; leaves it off otherwise", async () => {
-    expect((await applyRuntimeDetection(TEMPLATES.minimal, fakeProbe(["codex", "bwrap"]))).sandbox.enabled).toBe(true);
+  it("auto-enables the sandbox when the platform wrapper exists; leaves it off otherwise", async () => {
+    // the wrapper is platform-selected (bwrap on linux, sandbox-exec on macOS — P2-1);
+    // answer with the name THIS platform actually probes
+    const wrapper = process.platform === "darwin" ? "sandbox-exec" : "bwrap";
+    expect((await applyRuntimeDetection(TEMPLATES.minimal, fakeProbe(["codex", wrapper]))).sandbox.enabled).toBe(true);
     expect((await applyRuntimeDetection(TEMPLATES.minimal, fakeProbe(["codex"]))).sandbox.enabled).toBe(false);
   });
 });

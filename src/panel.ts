@@ -95,7 +95,7 @@ export function startPanel(engine: Engine, port: number, host = "127.0.0.1", doc
       executor: doctorCtx.executor,
       repo: doctorCtx.repo,
       dbPath: doctorCtx.dbPath,
-      bwrapPresent: wrapper.code === 0 && wrapper.stdout.trim() !== "",
+      wrapperPresent: wrapper.code === 0 && wrapper.stdout.trim() !== "",
       agentVersion: async (bin) => {
         const r = await shellProbe(bin, ["--version"], 5000);
         return r.code === 0 ? r.stdout.trim().split("\n")[0] : "";

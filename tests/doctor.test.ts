@@ -152,3 +152,24 @@ describe("envReferences", () => {
     expect(ok?.status).toBe("ok");
   });
 });
+
+describe("sandbox messaging is platform-aware (P2-1, #160)", () => {
+  it("darwin names sandbox-exec (ships with macOS); linux names bubblewrap (apt)", async () => {
+    const mac = byId(await runDoctor(base({ wrapperPresent: false, platform: "darwin" })), "sandbox");
+    expect(mac?.status).toBe("fail");
+    expect(mac?.line).toContain("sandbox-exec");
+    expect(mac?.line).toContain("ships with macOS");
+    const lin = byId(await runDoctor(base({ wrapperPresent: false, platform: "linux" })), "sandbox");
+    expect(lin?.status).toBe("fail");
+    expect(lin?.line).toContain("bwrap");
+    expect(lin?.line).toContain("apt install bubblewrap");
+  });
+
+  it("wrapperPresent is the field; bwrapPresent still accepted as the legacy name", async () => {
+    const modern = byId(await runDoctor(base({ wrapperPresent: true, platform: "darwin" })), "sandbox");
+    expect(modern?.status).toBe("ok");
+    expect(modern?.line).toContain("sandbox-exec present");
+    const legacy = byId(await runDoctor(base({ bwrapPresent: true })), "sandbox"); // base() already sets it true; assert ok via legacy-only shape
+    expect(legacy?.status).toBe("ok");
+  });
+});

@@ -218,8 +218,8 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
     try {
       const probePath = `${input.dbPath}.doctor-probe`;
       mkdirSync(dirname(input.dbPath), { recursive: true });
-      const { default: Database } = await import("better-sqlite3");
-      const db = new Database(probePath);
+      const { openDatabase } = await import("./db.js");
+      const db = openDatabase(probePath);
       db.pragma("busy_timeout = 2000");
       db.exec("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
       db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('doctor_probe', 'ok')").run();

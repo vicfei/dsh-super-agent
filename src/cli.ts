@@ -155,8 +155,8 @@ if (command === "doctor") {
   let wechatAuthPresent = false;
   if (existsSync(args.db)) {
     try {
-      const { default: Database } = await import("better-sqlite3");
-      const ro = new Database(args.db, { readonly: true });
+      const { openDatabase } = await import("./db.js");
+      const ro = openDatabase(args.db, { readonly: true });
       wechatAuthPresent = Boolean(ro.prepare("SELECT v FROM kv WHERE k = 'wechat_auth'").get());
       ro.close();
     } catch {

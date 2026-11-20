@@ -10,7 +10,7 @@
 // prev_hash is 64 zeros.
 
 import { createHash } from "node:crypto";
-import type { Database } from "better-sqlite3";
+import type { SqlDb } from "./db.js";
 
 export const LEDGER_SCHEMA = `
 CREATE TABLE IF NOT EXISTS event_log (
@@ -47,7 +47,7 @@ function hashOf(kind: string, payload: string, prev: string): string {
 }
 
 export class EventLedger {
-  constructor(private readonly db: Database) {
+  constructor(private readonly db: SqlDb) {
     this.db.exec(LEDGER_SCHEMA);
   }
 

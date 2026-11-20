@@ -181,6 +181,9 @@ Or the manual path from a clone — point the poll-and-classify loop at any repo
 ```bash
 git clone https://github.com/vicfei/dsh-super-agent && cd dsh-super-agent
 npm install
+# zero native deps on Node ≥ 22.13: node:sqlite is the default engine DB backend there;
+# better-sqlite3 (optional dep) is the fallback on older runtimes and machines without a
+# compile chain — `npm install` succeeds either way, DSH_DB_BACKEND=better|node pins one.
 cp examples/policy.json policy.json   # put your login in allowedList (or skip — first run scaffolds it)
 export GITHUB_TOKEN=ghp_…             # PAT: repo read (comments-write when replies land)
 npm run poll -- --repo you/your-repo --agent-login your-login --config policy.json

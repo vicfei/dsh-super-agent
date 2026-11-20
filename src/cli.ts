@@ -436,6 +436,28 @@ try {
       console.log("telegram: getUpdates long-poll source armed");
     }
 
+    // iMessage (v1.10 P2-2, #162): the personal-phone channel — macOS only, watchlisted
+    // handles only; the watchlist is an admission layer BEFORE the admission table.
+    if (process.env.IMESSAGE_HANDLES) {
+      if (process.platform !== "darwin") die(`IMESSAGE_HANDLES is set but this is ${process.platform} — the iMessage channel is macOS-only (osascript + Messages)${WITH_HELP}`);
+      const { ImessageSource, ImessageReplyChannel, defaultOsascript } = await import("./imessage.js");
+      const handles = process.env.IMESSAGE_HANDLES.split(/[,\s]+/).map((h) => h.trim()).filter(Boolean);
+      const imStore = {
+        loadSeen(guid: string): string[] {
+          try { return JSON.parse(engine.kvGet(`imessage_seen:${guid}`) ?? "[]") as string[]; } catch { return []; }
+        },
+        saveSeen(guid: string, ids: string[]): void { engine.kvSet(`imessage_seen:${guid}`, JSON.stringify(ids)); },
+      };
+      const imSource = new ImessageSource({ handles, store: imStore, runner: defaultOsascript, log: (l) => console.log(l) });
+      sources.push(imSource);
+      channels.push(new ImessageReplyChannel(() => defaultOsascript, (threadId) => {
+        const guid = imSource.chatGuidFor(threadId);
+        if (!guid) throw new Error(`imessage: no chat resolved for ${threadId} (outbox will retry after the next scan)`);
+        return guid;
+      }));
+      console.log(`imessage: watchlisted ${handles.length} handle(s) — AppleScript polling, fail-closed groups, DMs inherently addressed`);
+    }
+
     await runWatch({
       engine,
       sources,

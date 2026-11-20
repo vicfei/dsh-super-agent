@@ -215,7 +215,7 @@ describe("real confinement (P2-1, #160) — the wrapper is a fact, not a claim",
     process.env.SANDBOX_SECRET_PROBE = "leak-me";
     try {
       const r = await exec.run({ id: 21, threadId: "github:o/r/issues/5" }, { body: "b", author: "alice" }, "o/r");
-      expect(r.exitCode).toBe(0);
+      expect(r.exitCode, `confined run output:\n${r.output}`).toBe(0);
       expect(r.output).toContain("home-denied"); // outside the worktree bind: read-only root holds
       expect(r.output).toContain("env=stripped"); // the env allowlist holds — no ambient secrets
       expect(existsSync(join(r.worktree, "probe"))).toBe(true); // inside the bind: work proceeds

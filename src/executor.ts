@@ -4,7 +4,7 @@
 // Any CLI counts as the worker: the command string sees only env vars, never credentials.
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { composePersona } from "./persona.js";
 
@@ -71,13 +71,22 @@ export function bwrapArgs(workRoot: string, sandbox: SandboxConfig, cmd: string)
   ];
 }
 
-/** macOS sandbox-exec profile that confines writes to the worktree. */
+/** macOS sandbox-exec profile that confines writes to the worktree.
+ * Symlink aliases: the kernel checks the canonical path (/var → /private/var on every
+ * stock macOS) while the child holds the alias spelling — allow BOTH or every
+ * TMPDIR-derived worktree is denied writes (live finding, macos CI 2026-11-20). */
 export function sandboxExecProfile(workRoot: string, sandbox: SandboxConfig): string {
+  let alias = "";
+  try {
+    const real = realpathSync(workRoot);
+    if (real !== workRoot) alias = `(allow file-write* (subpath "${real}"))`;
+  } catch { /* worktree may not exist yet — the literal spelling still applies */ }
   return [
     "(version 1)",
     "(allow default)",
     "(deny file-write*)",
     `(allow file-write* (subpath "${workRoot}"))`,
+    alias,
     ...(sandbox.allowNetwork ? [] : ["(deny network*)"]),
   ].join("");
 }

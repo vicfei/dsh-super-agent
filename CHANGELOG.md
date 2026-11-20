@@ -1,3 +1,24 @@
+## 1.9.0 — the affinity release
+
+- Persona files (#152/#153): nine owner-edited markdown files under `persona/` (SOUL, IDENTITY,
+  STYLE, RULES, BOUNDARIES, WORKFLOW, SKILLS, KNOWLEDGE, GOALS), composed in a fixed order into
+  every worker prompt. A 16k char budget drops trailing files as a whole (named in a provenance
+  line the worker itself reads); every dispatch emits `persona.dispatch` on the hash-chained
+  ledger — file list, order, and a sha256 of exactly what the worker saw, so a later SOUL.md
+  edit is visible against every past run. `dsh init` writes the starter set and never
+  overwrites owner content, not even with `--force`.
+- `dsh chat` (#154/#155): the terminal as a sixth channel. Each typed line is an `im_dm`
+  trigger through the same admission table (an allowed-list member's line is explicit and goes
+  to work; an unlisted login is gated to ignore by the same cell). The chat thread is a full
+  ops thread — `?` prints the status card, digits resolve pending approvals with the same
+  state machine and receipts. Line → gate → ticket → worktree → report, zero IM configuration;
+  CLI triggers and WeChat triggers land in the same decision table.
+- Token-gated read-only panel (#156/#157): `PANEL_TOKEN` makes the panel Bearer-gated — every
+  request, the page included (timing-safe compare), `?token=` bootstraps the page — and
+  read-only by construction (acting endpoints refuse 403 even with the right token).
+  `PANEL_HOST` may bind beyond loopback only with a token; without one it is a loud hard
+  refusal at startup. No token set: byte-for-byte today's loopback panel.
+
 ## 1.8.0 — the witnessed grant
 
 - `dsh fleet --engines name:port,…`: one URL over every engine. Cards show policy/mode,

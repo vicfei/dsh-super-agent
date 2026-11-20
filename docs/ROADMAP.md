@@ -221,11 +221,11 @@ two-tier memory design exists to remove.
 
 把"装不上/用不了"的地域清零。
 
-- [ ] **P2-1 macOS sandbox-exec**（#8）：沙箱层平台抽象（Linux=bwrap 不变；macOS=seatbelt profile），doctor 自动探测并报告各自平台的可用性；CI 加 macos-latest 矩阵位。
-- [ ] **P2-2 iMessage 通道**（#7）：macOS-only，AppleScript 桥；与 P2-1 同期（同一平台故事）。`im_dm` 准入语义复用。
-- [ ] **P2-3 零原生依赖**（#11）：DB 层抽象——Node ≥ 22.5 走 `node:sqlite`，旧环境回退 better-sqlite3；`npm i` 在无编译链的机器上也能起。拧劲：两种后端跑同一套 375 测试，行为等价写入 CI。
+- [x] **P2-1 macOS sandbox-exec**（#8，#160/#161，v1.10.0）：沙箱层平台抽象（Linux=bwrap 不变；macOS=seatbelt profile），doctor 自动探测并报告各自平台的可用性；CI 加 macos-latest 矩阵位。
+- [x] **P2-2 iMessage 通道**（#7，#162/#163，v1.10.0）：macOS-only，AppleScript 桥；与 P2-1 同期（同一平台故事）。`im_dm` 准入语义复用。
+- [x] **P2-3 零原生依赖**（#11，#164/#165，v1.10.0）：DB 层抽象——Node ≥ 22.5 走 `node:sqlite`，旧环境回退 better-sqlite3；`npm i` 在无编译链的机器上也能起。拧劲：两种后端跑同一套 375 测试，行为等价写入 CI。
 
-验收：macOS 上从 install 到 work 全流程冒烟一次（owner 的 Mac 或 CI）；v1.10.0。
+验收（已达成 2026-11-20）：macos-latest CI 全矩阵绿（seatbelt 约束测试真实执行）；两后端同一套 415 测试等价绿；v1.10.0 npm live。真机（owner Mac）iMessage 冒烟留待发射前。
 
 ### Phase 3 — 委托边治理（v2.0 旗舰，~2 周，先设计后实现）
 

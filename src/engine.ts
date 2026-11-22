@@ -559,13 +559,57 @@ export class Engine {
     this.db.prepare("UPDATE approval_request SET resolved_at = ? WHERE id = ?").run(new Date().toISOString(), requestId);
   }
 
-  /** v1.1 approve-on-needs-person: re-arm a failed ticket for another run. */
+  /** v1.1 approve-on-needs-person: re-arm a failed ticket for another run.
+   *  v1.11: on a budget-held ticket, the approval is a WAIVER for the exhausted dimensions. */
   requeueTicket(id: number): boolean {
+    const hold = this.budgetHold(id);
+    if (hold) {
+      this.kvSet(`budget-waived:${id}`, JSON.stringify([...new Set([...this.budgetWaived(id), ...hold.dimensions])]));
+      this.kvDelete(`budget-held:${id}`);
+      this.ledger.emit("budget.waived", { ticketId: id, dimensions: hold.dimensions });
+    }
     const r = this.db
       .prepare(`UPDATE ticket SET requeued_at = ?, updated_at = ? WHERE id = ? AND state = 'open'`)
       .run(new Date().toISOString(), new Date().toISOString(), id);
     if (r.changes > 0) this.ledger.emit("ticket.requeued", { ticketId: id });
     return r.changes > 0;
+  }
+
+  // ── v1.11 budget gates: a held ticket waits for a person; approval is a waiver ──
+
+  /** Hold a ticket whose budget is exhausted — needs-person until a person waives or stops.
+   *  Pure state: the caller (the budget gates) emits the `budget.exhausted` evidence rows,
+   *  so a cap reached on a ticket that already completed is still on the ledger. */
+  holdTicketForBudget(ticketId: number, dimensions: string[], detail: string): void {
+    this.kvSet(`budget-held:${ticketId}`, JSON.stringify({ at: new Date().toISOString(), dimensions, detail }));
+  }
+
+  budgetHold(ticketId: number): { at: string; dimensions: string[]; detail: string } | null {
+    const raw = this.kvGet(`budget-held:${ticketId}`);
+    return raw ? (JSON.parse(raw) as { at: string; dimensions: string[]; detail: string }) : null;
+  }
+
+  /** Dimensions a person has waived for this ticket (approval history). */
+  budgetWaived(ticketId: number): string[] {
+    return JSON.parse(this.kvGet(`budget-waived:${ticketId}`) ?? "[]") as string[];
+  }
+
+  /** Worker-reported tokens, cumulative per ticket ($DSH_USAGE_FILE protocol). */
+  addTicketTokens(ticketId: number, input: number, output: number): void {
+    const cur = JSON.parse(this.kvGet(`budget-tokens:${ticketId}`) ?? '{"input":0,"output":0}') as { input: number; output: number };
+    this.kvSet(`budget-tokens:${ticketId}`, JSON.stringify({ input: cur.input + input, output: cur.output + output }));
+  }
+
+  ticketTokens(ticketId: number): { input: number; output: number } {
+    return JSON.parse(this.kvGet(`budget-tokens:${ticketId}`) ?? '{"input":0,"output":0}') as { input: number; output: number };
+  }
+
+  /** `budget.near` is recorded once per dimension — the early warning is evidence, not a log line. */
+  markBudgetNear(ticketId: number, dimension: string): boolean {
+    const key = `budget-near:${ticketId}:${dimension}`;
+    if (this.kvGet(key) !== null) return false;
+    this.kvSet(key, new Date().toISOString());
+    return true;
   }
 
   // ── v1.2 P2: the approval-request file protocol (worker's voice, never authority) ──
@@ -636,7 +680,9 @@ export class Engine {
       FROM ticket t JOIN trigger tr ON tr.id = t.trigger_id
       LEFT JOIN assignment la ON la.ticket_id = t.id
         AND la.id = (SELECT MAX(b.id) FROM assignment b WHERE b.ticket_id = t.id)
-      WHERE t.state = 'open' AND (
+      WHERE t.state = 'open'
+        AND NOT EXISTS (SELECT 1 FROM kv k WHERE k.k = 'budget-held:' || t.id) -- v1.11: held for a person
+        AND (
         la.id IS NULL OR (la.state = 'ended' AND la.exit_code = 0)
         OR (t.requeued_at IS NOT NULL AND la.state = 'ended' AND t.requeued_at >= la.ended_at)
       )
@@ -824,6 +870,7 @@ export class Engine {
       const a = lastAssignment.get(id);
       const stage: TicketView["stage"] = state === "ended"
         ? "ended"
+        : this.budgetHold(id) ? "needs-person" // v1.11: budget exhausted — a person decides
         : !a ? "queued"
         : a.state === "running" ? "working"
         : a.exitCode === 0 ? "queued" // ended cleanly but ticket reopened (resume) — re-claimable

@@ -91,6 +91,38 @@ export interface Policy {
   /** Two-tier memory (v1.4): distilled facts from completed tickets, injected into future
    * dispatches. Absent or enabled:false = disabled — every ticket starts from zero. */
   memory?: Partial<MemoryPolicy>;
+  /** Budget gates (v1.11, issue #171): per-ticket caps as checkable facts.
+   *  Absent = disabled — the executor's own timeout is the only limit. */
+  budget?: Partial<BudgetPolicy>;
+}
+
+/**
+ * Budget gates (v1.11, issue #171): long-task reliability as a policy slot. A ticket that
+ * reaches a cap is HELD — never killed silently: it lands in needs-person with
+ * `budget.exhausted` on the ledger, and a person's approval is a WAIVER for that dimension
+ * (the witnessed-grant posture at ticket granularity). Every cap is optional; a policy with
+ * no caps is inert.
+ */
+export interface BudgetPolicy {
+  /** Cumulative wall-clock across all runs of a ticket, including resumes. */
+  maxWallMs?: number;
+  /** Assignments a ticket may consume before a person must approve another. */
+  maxAttempts?: number;
+  /** A single run's output above this exhausts the budget. */
+  maxOutputBytes?: number;
+  /** Tokens a worker reports through $DSH_USAGE_FILE, cumulative per ticket. */
+  maxTokens?: number;
+  /** Fraction of a cap at which `budget.near` is recorded once (default 0.8). */
+  nearRatio: number;
+}
+
+/** The budget policy with defaults filled, or null when it is absent or caps nothing. */
+export function budgetPolicyOf(policy: Policy | null | undefined): BudgetPolicy | null {
+  const b = policy?.budget;
+  if (!b) return null;
+  const caps = [b.maxWallMs, b.maxAttempts, b.maxOutputBytes, b.maxTokens].filter((v) => v !== undefined && v > 0);
+  if (caps.length === 0) return null;
+  return { ...b, nearRatio: b.nearRatio ?? 0.8 };
 }
 
 /** One scheduled routine: a prompt plus when to fire it and where to report. */

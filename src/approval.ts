@@ -227,6 +227,9 @@ const renderedOnce = (ticketId: number, assignmentId: number): boolean =>
 function ticketLine(engine: Engine, ticketId: number): string {
   const t = engine.tickets().find((x) => x.id === ticketId);
   if (!t) return "(unknown)";
+  // v1.11: a budget hold is the ask — which dimension, how much, against what cap
+  const hold = engine.budgetHold(ticketId);
+  if (hold) return `budget hold (${hold.dimensions.join(", ")}) — ${hold.detail}`;
   // v1.2 P2: a worker-written approval request outranks the trigger excerpt — it IS the ask
   const request = engine.workerRequest(ticketId);
   if (request) return `opener @${t.opener} · worker requested: ${request.replace(/\s+/g, " ").slice(0, 200)}`;

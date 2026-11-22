@@ -175,7 +175,7 @@ export class Executor {
 
   /** Throws on blocked command, prepare failure, or unusable config — the caller records failure.
    * `memory` (v1.4): accepted durable-tier facts appended to DSH_PROMPT.md as project memory. */
-  async run(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string, memory: string[] = []): Promise<ExecutorResult> {
+  async run(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string, memory: string[] = [], opts: { timeoutMs?: number } = {}): Promise<ExecutorResult> {
     const blocked = this.cfg.blockedCommands.find((b) => this.cfg.command.includes(b));
     if (blocked) throw new Error(`executor command blocked by name: ${blocked}`);
 
@@ -209,13 +209,14 @@ export class Executor {
 
     const run = await sh(this.cfg.command, {
       cwd: dir,
-      timeoutMs: this.cfg.timeoutMs,
+      timeoutMs: opts.timeoutMs ?? this.cfg.timeoutMs, // v1.11: capped by the remaining wall budget
       sandbox: this.cfg.sandbox,
       workRoot: resolve(this.cfg.workRoot),
       env: {
         DSH_DIR: dir,
         DSH_PROMPT_FILE: promptFile,
         DSH_APPROVAL_FILE: join(dir, ".dsh", "approval-request.md"),
+        DSH_USAGE_FILE: join(dir, ".dsh", "usage.json"),
         DSH_TICKET: String(ticket.id),
         DSH_THREAD: ticket.threadId,
         DSH_REPO: repo,
@@ -264,6 +265,8 @@ export function renderPrompt(ticket: { id: number; threadId: string }, trigger: 
     "- To ask the owner for permission (something blocked here, an outward action), write title / reason /",
     "  requested action to the file at $DSH_APPROVAL_FILE and stop — the owner decides from chat;",
     "  nothing you write can flip a gate by itself.",
+    "- If you know your token usage, write it as JSON to $DSH_USAGE_FILE (e.g. {\"input_tokens\": 1200,",
+    "  \"output_tokens\": 340}) — it feeds the ticket's budget ledger; optional, never checked for truth.",
     "",
     "## Scope — carry through or stop, by impact",
     "",

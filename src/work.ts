@@ -5,6 +5,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { clipReply } from "./clip.js";
+import { budgetPolicyOf } from "./domain.js";
+import { budgetGateAfterRun, budgetGateBeforeRun, budgetRunTimeoutMs, budgetUsageOf } from "./budget.js";
 import type { Engine, SpillFile } from "./engine.js";
 import { Executor, type ExecutorResult } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
@@ -178,13 +180,24 @@ export async function runWork(
   const reports: WorkReport[] = [];
   // v1.4 read path: accepted memories ride along with every dispatch in this sweep.
   const injectable = memory ? engine.injectableMemories(repo, memory.maxInject) : [];
+  // v1.11 budget gates: absent policy = inert; present = every run passes two gates
+  const budget = budgetPolicyOf(engine.policy());
 
   for (const t of queued) {
+    if (budget) {
+      // pre-run gate: a ticket already at a cap is held for a person — never run, never killed
+      const held = budgetGateBeforeRun(engine, budget, t.id);
+      if (held) {
+        reports.push({ ticketId: t.id, assignmentId: 0, outcome: "refused", detail: `budget exhausted (${held.join(", ")}) — held for a person` });
+        continue;
+      }
+    }
     const assignmentId = engine.startAssignment(t.id, ""); // running — worktree filled on success
     if (t.spills.length > 0) writeSpills(executor.worktreeOf(t.id), t.spills); // before the run: recall must be readable
     let result: ExecutorResult | undefined;
     try {
-      result = await executor.run({ id: t.id, threadId: t.threadId }, { body: t.body, author: t.author }, repo, injectable);
+      result = await executor.run({ id: t.id, threadId: t.threadId }, { body: t.body, author: t.author }, repo, injectable,
+        budget ? { timeoutMs: budgetRunTimeoutMs(budgetUsageOf(engine, t.id), budget, executor.cfg.timeoutMs, engine.budgetWaived(t.id)) } : {});
       // v1.9 P1-1: persona is an auditable input — one ledger row per dispatch pins the
       // file list, order and hash of what the worker actually saw.
       if (result.persona) {
@@ -211,6 +224,7 @@ export async function runWork(
     if (request) {
       engine.endAssignment(assignmentId, ok ? null : result.exitCode, result.timedOut, result.output);
       engine.recordWorkerRequest(t.id, request.content);
+      if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree);
       engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId,
         clipReply(workerAsked(t.id, request.content), 150));
       reports.push({ ticketId: t.id, assignmentId, outcome: "failed", detail: "worker requested a person (approval file)" });
@@ -222,10 +236,12 @@ export async function runWork(
       // gate is a human promote; until then nothing is said and nothing leaves the worktree.
       engine.completeTicket(t.id);
       await distillIntoMemory(engine, memory, repo, t.id, reportBody(t.id, result));
+      if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // evidence only — the ticket is done
       reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: "exit 0 · speculative (silent, awaiting promote)" });
     } else if (ok) {
       engine.completeTicket(t.id);
       await distillIntoMemory(engine, memory, repo, t.id, reportBody(t.id, result));
+      if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // evidence only — the ticket is done
       const delivery = client ? await deliverPullRequest(client, repo, t, { body: t.body, author: t.author }, result) : {};
       if (delivery.prNumber !== undefined) {
         engine.recordDelivery({
@@ -239,6 +255,7 @@ export async function runWork(
       engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId, body);
       reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: delivery.prUrl ? `exit 0 · PR opened` : "exit 0" });
     } else {
+      if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // open + over cap → held for a person
       engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId, reportBody(t.id, result));
       reports.push({
         ticketId: t.id, assignmentId, outcome: "failed",

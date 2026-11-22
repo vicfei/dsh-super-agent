@@ -10,6 +10,7 @@ export { GitHubSource, isBotActor } from "./github/source.js";
 export { FileSourceState, type StateStore, type SourceState } from "./github/state.js";
 export { Executor, renderPrompt, type ExecutorConfig, type ExecutorResult } from "./executor.js";
 export { runWork, deliverPullRequest, consumeApprovalRequest, type WorkReport } from "./work.js";
+export { budgetUsageOf, evaluateBudget, consumeUsageFile, budgetGateBeforeRun, budgetGateAfterRun, budgetRunTimeoutMs, type BudgetDimension, type BudgetUsage, type BudgetVerdict, type UsageReport } from "./budget.js";
 export { runWatch, type WatchOptions } from "./watch.js";
 export { evaluateMerge, runMergeSweep, type MergeCheck, type MergeSweepLine } from "./merge.js";
 export { runWatchdogSweep, healthReport, watchdogPolicyOf, type WatchdogLine, type WatchdogPolicy, type HealthReport, type ProgressCheck } from "./watchdog.js";

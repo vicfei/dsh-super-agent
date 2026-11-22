@@ -80,6 +80,18 @@ export function rehearsalReady(ticketId: number, line: string): string {
     : `🧪 [rehearsal ready] Ticket #${ticketId} was silently rehearsed and awaits the deliver gate.\n${line}\n1 promote (push + PR) · 2 discard · 3 detail\n(reply with just the number)`;
 }
 
+export function milestoneReached(ticketId: number, done: number, total: number, next: string): string {
+  return localeName() === "zh"
+    ? `🧩 [里程碑] 工单 #${ticketId} 已完成 ${done}/${total},等待你放行下一段。\n下一步:${next}\n1 放行继续 · 2 停止 · 3 详情\n(只回复数字)`
+    : `🧩 [milestone] Ticket #${ticketId} reached ${done}/${total} and awaits your go for the next segment.\nNext: ${next}\n1 continue · 2 stop · 3 detail\n(reply with just the number)`;
+}
+
+export function receiptMilestoneApproved(ticketId: number): string {
+  return localeName() === "zh"
+    ? `✅ 工单 #${ticketId} 已放行——worker 从下一个里程碑继续。`
+    : `✅ Ticket #${ticketId} approved to continue — the worker resumes at the next milestone.`;
+}
+
 export function receiptRequeued(ticketId: number): string {
   return localeName() === "zh"
     ? `✅ 工单 #${ticketId} 已重新排队——worker 会再跑一次并在这里报告。`

@@ -227,7 +227,19 @@ two-tier memory design exists to remove.
 
 验收（已达成 2026-11-20）：macos-latest CI 全矩阵绿（seatbelt 约束测试真实执行）；两后端同一套 415 测试等价绿；v1.10.0 npm live。真机（owner Mac）iMessage 冒烟留待发射前。
 
+### Phase 2.5 — v1.11 长任务可靠性（2026-11-21 增补，来自长任务 agent 调研：METR 时距 ~3.5 个月翻倍、50% 失败率、可靠性工程成为行业标配）
+
+追赶清单之外的第一版：长任务时代，瓶颈从"会不会做"移到"失败了谁发现、谁负责、怎么恢复"——这是准入控制的延伸战场。
+
+- [ ] **预算闸**：`policy.budget` 三路上限——wall-clock 累计（跨 resume）、尝试次数、产出大小；`$DSH_USAGE_FILE` 单向文件协议（worker 可选上报 token 用量，同 approval-request 模式，引擎聚合入账本）。拧劲：超预算不杀——落 needs-person + `budget.near`/`budget.exhausted` 账本行；预算是可检查的事实，不是模型自觉。
+- [ ] **里程碑审批节奏**：speculative promote 骨架扩展为分段 deliver gate——长任务切多个交付节点，逐节点人审放行；worker 经 `.dsh/milestones.md` 声明里程碑完成（单向文件，informative never authoritative）。
+- [ ] **Retention-inversion 防线**（文档）：README 论证段新增"compaction 会静默丢掉 prompt 里的治理约束；dsh 的约束在引擎里——prompt 会丢，门禁不会"（2026-11 调研最锋利的话术，发射帖直接引用）。
+
+验收：三路超限各带测试（超时/超次/超量→needs-person + 账本行）；usage 文件协议带测试（缺文件=惰性）；README 双语；v1.11.0。
+
 ### Phase 3 — 委托边治理（v2.0 旗舰，~2 周，先设计后实现）
+
+> 2026-11-21 注：设计文档原定随 v1.9 同批出（发射帖 roadmap 预告位），现立即补——`docs/designs/delegation-governance.md`。增补要点：自家四节点 fleet 即 A2A 的最初 dogfood（节点间委托 = 同一协议；Daytona 已闭源、Coder 无治理，"self-hosted agent infrastructure, governed" 是发射后的下一叙事）。
 
 治理论题的下一格：从"管自家 agent"到"管委托边"。**这是唯一一个 LofiSu 只做了功能、我们要做成制度的项。**
 
@@ -245,6 +257,12 @@ two-tier memory design exists to remove.
 - [ ] **P4-3 混合语义记忆**（#3）：BYO-embedding（复用 BYOM 哲学——任意 OpenAI 兼容 `/v1/embeddings` 端点）；热层=近期蒸馏，冷层=全量带混合检索（词汇 BM25 先行、语义可选开启）；`memoryPolicyOf` 增档位。立场不变：默认关、开了也要在账本留"注入了什么"的痕迹。
 
 验收：召回质量用既有 dogfood 工单回放对比；v2.1.0。
+
+### Backlog（无版本承诺，2026-11-21 入册）
+
+- **Landlock+seccomp 第三沙箱后端**：内核内置、零外部依赖（与 P2-3 哲学咬合），Codex/Cursor 已用作默认后端；但 Node 无直接 syscall 路径，需助手方案——先做 doctor 探测 + 设计笔记再决定是否实现。
+- **沙箱域级网络白名单**：`allowNetwork` 从布尔升级为域清单；参考 Anthropic srt（`@anthropic-ai/sandbox-runtime`，Seatbelt+bwrap+网络过滤代理，与 dsh 沙箱栈同族）。
+- **GitHub Source 状态触发**：checks/review 状态变化作为原生 trigger 类型（现仅 comments/mentions 响应型）——PR 监控 dogfood 的原生路径，消灭快照 diff 的轮询形态。
 
 ### 排序依据
 

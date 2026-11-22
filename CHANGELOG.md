@@ -1,3 +1,21 @@
+## 1.11.0 — the stamina release
+
+- Budget gates (#171/#172): `policy.budget` gives a ticket four optional caps — cumulative
+  wall-clock across resumes, runs, a single run's output, and worker-reported tokens
+  (`$DSH_USAGE_FILE`, one-way like the approval request). A ticket at a cap is **held, never
+  killed silently**: needs-person, `budget.exhausted` on the ledger with the dimension, the
+  usage and the cap. A person's approval is a **waiver** for that dimension
+  (`budget.waived`), the ticket re-armed. A run's timeout is capped at the remaining wall
+  budget; `budget.near` is recorded once per dimension. Absent policy = inert.
+- Milestone gates (#173/#174): the worker keeps a checklist at `$DSH_MILESTONES_FILE`; with
+  `policy.milestones.enabled`, a run that succeeds while items remain **holds the ticket for
+  a person** — the approval surface asks `1 continue · 2 stop · 3 detail`; `1` releases the
+  segment and the pending items become the next run's guidance. `ticket.milestones` /
+  `ticket.milestone-held` on the ledger. Default off; inert without the approval surface.
+- README: the **retention-inversion** argument — compaction silently drops governance
+  constraints that live only in the prompt; dsh's constraints live in the engine. The prompt
+  can be lost; the gate cannot.
+
 ## 1.10.0 — the everywhere release
 
 - macOS platform parity (#160/#161): the seatbelt profile finally EXECUTES — a real

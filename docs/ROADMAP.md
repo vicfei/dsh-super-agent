@@ -231,11 +231,11 @@ two-tier memory design exists to remove.
 
 追赶清单之外的第一版：长任务时代，瓶颈从"会不会做"移到"失败了谁发现、谁负责、怎么恢复"——这是准入控制的延伸战场。
 
-- [ ] **预算闸**：`policy.budget` 三路上限——wall-clock 累计（跨 resume）、尝试次数、产出大小；`$DSH_USAGE_FILE` 单向文件协议（worker 可选上报 token 用量，同 approval-request 模式，引擎聚合入账本）。拧劲：超预算不杀——落 needs-person + `budget.near`/`budget.exhausted` 账本行；预算是可检查的事实，不是模型自觉。
-- [ ] **里程碑审批节奏**：speculative promote 骨架扩展为分段 deliver gate——长任务切多个交付节点，逐节点人审放行；worker 经 `.dsh/milestones.md` 声明里程碑完成（单向文件，informative never authoritative）。
-- [ ] **Retention-inversion 防线**（文档）：README 论证段新增"compaction 会静默丢掉 prompt 里的治理约束；dsh 的约束在引擎里——prompt 会丢，门禁不会"（2026-11 调研最锋利的话术，发射帖直接引用）。
+- [x] **预算闸**（#171/#172，v1.11.0）：`policy.budget` 三路上限——wall-clock 累计（跨 resume）、尝试次数、产出大小；`$DSH_USAGE_FILE` 单向文件协议（worker 可选上报 token 用量，同 approval-request 模式，引擎聚合入账本）。拧劲：超预算不杀——落 needs-person + `budget.near`/`budget.exhausted` 账本行；预算是可检查的事实，不是模型自觉。
+- [x] **里程碑审批节奏**（#173/#174，v1.11.0）：speculative promote 骨架扩展为分段 deliver gate——长任务切多个交付节点，逐节点人审放行；worker 经 `.dsh/milestones.md` 声明里程碑完成（单向文件，informative never authoritative）。
+- [x] **Retention-inversion 防线**（文档，v1.11.0）：README 论证段新增"compaction 会静默丢掉 prompt 里的治理约束；dsh 的约束在引擎里——prompt 会丢，门禁不会"（2026-11 调研最锋利的话术，发射帖直接引用）。
 
-验收：三路超限各带测试（超时/超次/超量→needs-person + 账本行）；usage 文件协议带测试（缺文件=惰性）；README 双语；v1.11.0。
+验收（已达成 2026-11-21）：三路超限各带测试；usage 文件协议带测试；README 双语；v1.11.0 npm live。
 
 ### Phase 3 — 委托边治理（v2.0 旗舰，~2 周，先设计后实现）
 

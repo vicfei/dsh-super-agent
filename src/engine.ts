@@ -526,7 +526,7 @@ export class Engine {
   }
 
   /** Render a request: newest-wins — older unresolved requests in the thread are superseded. */
-  openApprovalRequest(opsThread: string, ticketId: number, kind: "needs-person" | "speculative", now = new Date()): number {
+  openApprovalRequest(opsThread: string, ticketId: number, kind: "needs-person" | "speculative" | "milestone", now = new Date()): number {
     const ts = now.toISOString();
     this.db.prepare("UPDATE approval_request SET superseded_by = -1, resolved_at = ? WHERE ops_thread = ? AND resolved_at IS NULL").run(ts, opsThread);
     const info = this.db
@@ -568,6 +568,7 @@ export class Engine {
       this.kvDelete(`budget-held:${id}`);
       this.ledger.emit("budget.waived", { ticketId: id, dimensions: hold.dimensions });
     }
+    this.kvDelete(`milestone-held:${id}`); // v1.11: an approved segment releases the milestone hold
     const r = this.db
       .prepare(`UPDATE ticket SET requeued_at = ?, updated_at = ? WHERE id = ? AND state = 'open'`)
       .run(new Date().toISOString(), new Date().toISOString(), id);
@@ -602,6 +603,29 @@ export class Engine {
 
   ticketTokens(ticketId: number): { input: number; output: number } {
     return JSON.parse(this.kvGet(`budget-tokens:${ticketId}`) ?? '{"input":0,"output":0}') as { input: number; output: number };
+  }
+
+  // ── v1.11 milestone gates: a finished run with pending milestones awaits a person ──
+
+  holdTicketAtMilestone(ticketId: number, done: string[], pending: string[]): void {
+    this.kvSet(`milestone-held:${ticketId}`, JSON.stringify({ at: new Date().toISOString(), done, pending }));
+    this.ledger.emit("ticket.milestone-held", { ticketId, done: done.length, pending: pending.length });
+  }
+
+  milestoneHold(ticketId: number): { at: string; done: string[]; pending: string[] } | null {
+    const raw = this.kvGet(`milestone-held:${ticketId}`);
+    return raw ? (JSON.parse(raw) as { at: string; done: string[]; pending: string[] }) : null;
+  }
+
+  /** The latest checklist the worker reported — evidence of how far a long task got. */
+  recordMilestones(ticketId: number, done: string[], pending: string[]): void {
+    this.kvSet(`milestones:${ticketId}`, JSON.stringify({ done, pending }));
+    this.ledger.emit("ticket.milestones", { ticketId, done: done.length, pending: pending.length, next: pending[0] ?? null });
+  }
+
+  milestones(ticketId: number): { done: string[]; pending: string[] } | null {
+    const raw = this.kvGet(`milestones:${ticketId}`);
+    return raw ? (JSON.parse(raw) as { done: string[]; pending: string[] }) : null;
   }
 
   /** `budget.near` is recorded once per dimension — the early warning is evidence, not a log line. */
@@ -681,7 +705,7 @@ export class Engine {
       LEFT JOIN assignment la ON la.ticket_id = t.id
         AND la.id = (SELECT MAX(b.id) FROM assignment b WHERE b.ticket_id = t.id)
       WHERE t.state = 'open'
-        AND NOT EXISTS (SELECT 1 FROM kv k WHERE k.k = 'budget-held:' || t.id) -- v1.11: held for a person
+        AND NOT EXISTS (SELECT 1 FROM kv k WHERE k.k IN ('budget-held:' || t.id, 'milestone-held:' || t.id)) -- v1.11: held for a person
         AND (
         la.id IS NULL OR (la.state = 'ended' AND la.exit_code = 0)
         OR (t.requeued_at IS NOT NULL AND la.state = 'ended' AND t.requeued_at >= la.ended_at)
@@ -870,7 +894,7 @@ export class Engine {
       const a = lastAssignment.get(id);
       const stage: TicketView["stage"] = state === "ended"
         ? "ended"
-        : this.budgetHold(id) ? "needs-person" // v1.11: budget exhausted — a person decides
+        : this.budgetHold(id) || this.milestoneHold(id) ? "needs-person" // v1.11: held for a person (budget / milestone)
         : !a ? "queued"
         : a.state === "running" ? "working"
         : a.exitCode === 0 ? "queued" // ended cleanly but ticket reopened (resume) — re-claimable

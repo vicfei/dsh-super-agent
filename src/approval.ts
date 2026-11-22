@@ -5,7 +5,7 @@
 // expiry, newest-wins single pending, receipts for every applied action.
 
 import type { Policy, Trigger } from "./domain.js";
-import { approvalNeeded, receiptNothingPending, receiptPromoted, receiptRequeued, receiptStopped, rehearsalReady } from "./locale.js";
+import { approvalNeeded, milestoneReached, receiptMilestoneApproved, receiptNothingPending, receiptPromoted, receiptRequeued, receiptStopped, rehearsalReady } from "./locale.js";
 import type { Engine } from "./engine.js";
 import type { ReplyChannel } from "./source.js";
 import { drainReplyEffects } from "./work.js";
@@ -81,7 +81,9 @@ export function applyApproval(engine: Engine, opsThread: string, digit: 1 | 2 | 
   }
 
   if (digit === 3) {
-    engine.enqueueReply(`approval-detail:${req.id}`, opsThread, `Detail — ${excerpt(engine, req.ticketId)}. 1 approve · 2 stop${req.kind === "speculative" ? "/discard" : ""} · 3 detail again.`);
+    const mh = engine.milestoneHold(req.ticketId);
+    const progress = mh ? ` Milestones: ${mh.done.length} done · ${mh.pending.length} pending; next: ${mh.pending[0] ?? "(none)"}` : "";
+    engine.enqueueReply(`approval-detail:${req.id}`, opsThread, `Detail — ${excerpt(engine, req.ticketId)}${progress}. 1 approve · 2 stop${req.kind === "speculative" ? "/discard" : ""} · 3 detail again.`);
     return `detail:${req.ticketId}`;
   }
 
@@ -104,8 +106,18 @@ export function applyApproval(engine: Engine, opsThread: string, digit: 1 | 2 | 
     return stopped ? `stop:${req.ticketId}` : `stop-noop:${req.ticketId}`;
   }
 
-  // digit 1 — approve: needs-person requeues for another run; speculative hits the deliver gate
+  // digit 1 — approve: needs-person requeues for another run; speculative hits the deliver gate;
+  // a milestone hold releases the segment and the pending items become the next run's guidance
   engine.resolveApproval(req.id);
+  if (req.kind === "milestone") {
+    const mh = engine.milestoneHold(req.ticketId);
+    const ok = engine.requeueTicket(req.ticketId); // releases the hold
+    if (ok && mh) {
+      engine.setTicketNote(req.ticketId, `The owner approved your progress through: ${mh.done[mh.done.length - 1] ?? "(nothing yet)"}\nContinue with the remaining milestones:\n${mh.pending.map((p) => `- ${p}`).join("\n")}`);
+    }
+    engine.enqueueReply(`approval-receipt:${req.id}`, opsThread, ok ? receiptMilestoneApproved(req.ticketId) : `Ticket #${req.ticketId} was no longer open — nothing continued.`);
+    return ok ? `milestone-approved:${req.ticketId}` : `milestone-noop:${req.ticketId}`;
+  }
   if (req.kind === "speculative") {
     const ok = engine.promoteTicket(req.ticketId, "im-approval");
     engine.enqueueReply(`approval-receipt:${req.id}`, opsThread, ok
@@ -199,11 +211,18 @@ const renderedOnce = (ticketId: number, assignmentId: number): boolean =>
     if (renderedOnce(t.id, aid)) continue;
     const thread = route(t.opener);
     if (!thread) continue;
-    engine.openApprovalRequest(thread, t.id, "needs-person");
-    engine.enqueueReply(`approval-req:${t.id}:${aid}`, thread,
-      approvalNeeded(t.id, ticketLine(engine, t.id)));
+    const mh = engine.milestoneHold(t.id); // v1.11: a segment finished — the ask is "continue?"
+    if (mh) {
+      engine.openApprovalRequest(thread, t.id, "milestone");
+      engine.enqueueReply(`approval-req:${t.id}:${aid}`, thread,
+        milestoneReached(t.id, mh.done.length, mh.done.length + mh.pending.length, mh.pending[0] ?? "(none)"));
+    } else {
+      engine.openApprovalRequest(thread, t.id, "needs-person");
+      engine.enqueueReply(`approval-req:${t.id}:${aid}`, thread,
+        approvalNeeded(t.id, ticketLine(engine, t.id)));
+    }
     rendered++;
-    log(`approval request rendered: #${t.id} → ${thread.split(":")[0]} ops thread`);
+    log(`approval request rendered: #${t.id} → ${thread.split(":")[0]} ops thread${mh ? " (milestone)" : ""}`);
   }
 
   for (const t of engine.tickets()) {

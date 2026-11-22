@@ -7,6 +7,8 @@ import { dirname, join } from "node:path";
 import { clipReply } from "./clip.js";
 import { budgetPolicyOf } from "./domain.js";
 import { budgetGateAfterRun, budgetGateBeforeRun, budgetRunTimeoutMs, budgetUsageOf } from "./budget.js";
+import { milestonesEnabled } from "./domain.js";
+import { readMilestones } from "./milestones.js";
 import type { Engine, SpillFile } from "./engine.js";
 import { Executor, type ExecutorResult } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
@@ -239,6 +241,18 @@ export async function runWork(
       if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // evidence only — the ticket is done
       reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: "exit 0 · speculative (silent, awaiting promote)" });
     } else if (ok) {
+      // v1.11 milestone gate: a segment finished with items pending — hold for a person before
+      // the next segment. Needs the approval surface (the ask travels as digit `1`); without it
+      // the gate is inert, never a stranded ticket.
+      const policy = engine.policy();
+      const ms = milestonesEnabled(policy) && policy?.approval?.enabled === true ? readMilestones(result.worktree) : null;
+      if (ms) engine.recordMilestones(t.id, ms.done, ms.pending);
+      if (ms && ms.pending.length > 0) {
+        engine.holdTicketAtMilestone(t.id, ms.done, ms.pending);
+        if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // still open: a budget cap holds too
+        reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: `exit 0 · milestone ${ms.done.length}/${ms.done.length + ms.pending.length} — awaiting approval to continue` });
+        continue;
+      }
       engine.completeTicket(t.id);
       await distillIntoMemory(engine, memory, repo, t.id, reportBody(t.id, result));
       if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // evidence only — the ticket is done

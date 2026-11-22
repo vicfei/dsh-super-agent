@@ -252,6 +252,8 @@ Auto-merge(默认**关闭**)用结构性刹车把闭环走完——每个条件�
 
 **预算闸(v1.11)。** 长任务需要**可检查的事实**作上限,而不是模型的自觉。`policy.budget` 给工单四道可选上限——跨 resume 的累计时长(`maxWallMs`)、运行次数(`maxAttempts`)、单次运行产出(`maxOutputBytes`)、经 `$DSH_USAGE_FILE` 上报的 token(`maxTokens`,可选,与审批请求同构的单向文件)。到达上限的工单**被留置,绝不静默击杀**:落 needs-person,`budget.exhausted` 带维度/用量/上限入哈希链账本,审批面把留置渲染出来。**人的批准即豁免**——`budget.waived` 入账本、工单重新武装—— witnessed-grant 姿态落到工单粒度。单次运行的超时被剩余时间预算封顶,上限在运行**之中**同样生效;`budget.near` 每维度只记一次,作预警证据。不配 policy 即惰性。
 
+**里程碑闸(v1.11)。** 长任务应当在**里程碑边界**为人停留,而不是只在终点。worker 在 `$DSH_MILESTONES_FILE` 维护清单(`- [x]` / `- [ ]` 条目——进度报告,单向,绝不是许可)。开启 `policy.milestones.enabled` 后,一次运行成功但仍有未完成项时,工单**留置等人**:审批面发问 `🧩 已完成 1/3——1 放行继续 · 2 停止 · 3 详情`,`1` 放行本段、未完成项成为下次运行的指引,`2` 停止(双确认),`3` 列出进度。`ticket.milestones` 与 `ticket.milestone-held` 入账本——长任务走到了哪里成为证据。默认关闭;无审批面时惰性(绝不滞留工单)。
+
 **Watchdog(v0.9)。** 文章 §6 的外部控制回路,带一条铁律:**只观察、只提醒,永不碰准入**——"要不要继续"永远留在人的审批面。`policy.watchdog` 显式开启:任务跑过 `stuckWorkingNudgeMs`(默认 30 分钟)在其线程里收到恰好一次问询——催之前,可选的 LLM 问诊(任意 OpenAI 兼容端点,失败关闭退回规则)若从 worker 输出尾部看到实质进展则跳过;needs-person 工单等待超过 `needsPersonReminderMs`(默认 24 小时)收到恰好一次提醒——**永不自动关闭**。执行器的进程组超时仍是硬停止,Watchdog 绝不杀任务。`health` 是它的只读 CLI:阶段计数、最老滞留时长、effect 积压。
 
 面板(`npm run panel`,仅本机——v1.3 仪表盘)只显示需要人的事项——needs-person 工单、标注 *would accept* 的观察记录、完整决策日志、接受模式切换(切 `auto` 会要求确认)、routines 及其下次触发、Watchdog 体征、绿/黄/红渲染的 doctor 检查项,以及审计深链——每条决策可展开完整触发原文,每张工单可展开运行历史与审批轨迹:

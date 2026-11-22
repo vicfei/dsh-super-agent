@@ -94,6 +94,13 @@ export interface Policy {
   /** Budget gates (v1.11, issue #171): per-ticket caps as checkable facts.
    *  Absent = disabled — the executor's own timeout is the only limit. */
   budget?: Partial<BudgetPolicy>;
+  /** Milestone gates (v1.11, issue #173): a run that finishes with pending milestones
+   *  holds the ticket for a person before the next segment. Absent = disabled. */
+  milestones?: { enabled?: boolean };
+}
+
+export function milestonesEnabled(policy: Policy | null | undefined): boolean {
+  return policy?.milestones?.enabled === true;
 }
 
 /**

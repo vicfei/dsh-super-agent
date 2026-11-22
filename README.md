@@ -37,6 +37,8 @@ So this project takes one wedge and does it properly:
 
 > **The first executor-agnostic orchestrator with the Super-agent authorization design: admission tables, explicit/inferred strength, observe → auto progressive trust.**
 
+**Why the gate lives in code, not in the prompt.** Long tasks make this concrete. As an agent's context fills, harnesses *compact* it — summarize the history to keep going — and 2026's field reports name the failure that follows: **retention inversion**. The governance constraints an agent obeyed while they were visible in its context are silently dropped by the compaction summary; the agent keeps working, now ungoverned, and nothing announces the change. A rule that lives only in a prompt is a rule with a half-life. dsh's rules live in the engine: the admission table, the mode ladder, the sandbox, the budget and milestone gates are code that runs on every trigger and every dispatch. The prompt can be lost, compacted or rewritten — **the gate cannot.** That is what *host-enforced* buys you at hour seventeen of a task, not just at turn one.
+
 ## The three rules of admission
 
 <p align="center">

@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS ticket (
   stopped_by TEXT, stopped_at TEXT,
   revoked_reason TEXT,
   resumed_count INTEGER NOT NULL DEFAULT 0,
+  parent_ticket_id INTEGER REFERENCES ticket(id), -- v2.0 teams: child tickets (delegation)
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ticket_thread ON ticket(thread_id);
@@ -157,8 +158,9 @@ export interface TicketView {
   strength: Strength;
   policyVersion: number;
   state: "open" | "ended";
-  /** queued (no assignment) / working / needs-person (failed assignment) / ended. */
-  stage: "queued" | "working" | "needs-person" | "ended";
+  /** queued (no assignment) / working / needs-person (failed assignment) / ended.
+   *  waiting-children (v2.0 teams): the parent delegated sub-work and waits for it. */
+  stage: "queued" | "working" | "needs-person" | "waiting-children" | "ended";
   stoppedBy?: string;
   revokedReason?: string;
   resumedCount: number;
@@ -229,6 +231,9 @@ export class Engine {
     this.db.pragma("foreign_keys = ON");
     this.db.pragma("busy_timeout = 5000"); // panel's quick writes alongside poll
     this.db.exec(SCHEMA);
+    // v2.0 teams: existing databases predate parent_ticket_id — column add is idempotent
+    const ticketCols = (this.db.prepare("PRAGMA table_info(ticket)").all() as { name: string }[]).map((c) => c.name);
+    if (!ticketCols.includes("parent_ticket_id")) this.db.exec("ALTER TABLE ticket ADD COLUMN parent_ticket_id INTEGER REFERENCES ticket(id)");
     this.ledger = new EventLedger(this.db);
   }
 
@@ -569,6 +574,7 @@ export class Engine {
       this.ledger.emit("budget.waived", { ticketId: id, dimensions: hold.dimensions });
     }
     this.kvDelete(`milestone-held:${id}`); // v1.11: an approved segment releases the milestone hold
+    this.kvDelete(`child-failed:${id}`); // v2.0: an approved requeue releases the child-failure park
     const r = this.db
       .prepare(`UPDATE ticket SET requeued_at = ?, updated_at = ? WHERE id = ? AND state = 'open'`)
       .run(new Date().toISOString(), new Date().toISOString(), id);
@@ -626,6 +632,54 @@ export class Engine {
   milestones(ticketId: number): { done: string[]; pending: string[] } | null {
     const raw = this.kvGet(`milestones:${ticketId}`);
     return raw ? (JSON.parse(raw) as { done: string[]; pending: string[] }) : null;
+  }
+
+  // ── v2.0 teams: worker-spawned child tickets — team expansion itself goes through a gate ──
+
+  /** Open `count` child tickets for a parent: one synthesized trigger each, parent-linked,
+   *  inheriting the parent's scope admission (the delegation was gated by policy.teams +
+   *  the parent's own ticket). One ledger row per child, one for the delegation itself. */
+  createChildTickets(parentId: number, prompt: string, count: number, basis: string, policyVersion: number): number[] {
+    const parent = this.db
+      .prepare("SELECT t.thread_id, t.opener_login, tr.source, tr.scope FROM ticket t JOIN trigger tr ON tr.id = t.trigger_id WHERE t.id = ?")
+      .get(parentId) as { thread_id: string; opener_login: string; source: string; scope: string } | undefined;
+    if (!parent || count <= 0) return [];
+    const now = new Date().toISOString();
+    const ids: number[] = [];
+    for (let i = 1; i <= count; i++) {
+      const tid = `delegate:${parentId}/${i}-${Date.now()}`;
+      this.db
+        .prepare("INSERT INTO trigger (id, source, scope, thread_id, author_login, author_is_bot, addressing, body, ts, ingested_at) VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?, ?)")
+        .run(tid, parent.source, parent.scope, parent.thread_id, parent.opener_login, prompt, now, now);
+      const info = this.db
+        .prepare("INSERT INTO ticket (thread_id, trigger_id, opener_login, strength, policy_version, basis, parent_ticket_id, created_at, updated_at) VALUES (?, ?, ?, 'explicit', ?, ?, ?, ?, ?)")
+        .run(parent.thread_id, tid, parent.opener_login, policyVersion, basis, parentId, now, now);
+      const childId = Number(info.lastInsertRowid);
+      this.ledger.emit("ticket.opened", { ticketId: childId, threadId: parent.thread_id, opener: parent.opener_login, strength: "explicit", parent: parentId });
+      ids.push(childId);
+    }
+    this.ledger.emit("ticket.delegated", { ticketId: parentId, children: ids, prompt: prompt.slice(0, 200) });
+    this.kvSet(`children-pending:${parentId}`, String(ids.length));
+    return ids;
+  }
+
+  /** Children still working for this parent. */
+  pendingChildren(parentId: number): number {
+    return Number((this.db.prepare("SELECT COUNT(*) c FROM ticket WHERE parent_ticket_id = ? AND state = 'open'").get(parentId) as { c: number }).c);
+  }
+
+  isChildTicket(ticketId: number): boolean {
+    return Number((this.db.prepare("SELECT parent_ticket_id p FROM ticket WHERE id = ?").get(ticketId) as { p: number | null } | undefined)?.p ?? 0) > 0;
+  }
+
+  /** A child failed: the parent parks for a person with the failure as context — the team's
+   *  failure has one owner (the person watching the parent). */
+  parkParentForChildFailure(childId: number, detail: string): boolean {
+    const parent = (this.db.prepare("SELECT parent_ticket_id p FROM ticket WHERE id = ?").get(childId) as { p: number | null } | undefined)?.p;
+    if (!parent) return false;
+    this.kvSet(`child-failed:${parent}`, JSON.stringify({ at: new Date().toISOString(), childId, detail: detail.slice(0, 300) }));
+    this.ledger.emit("ticket.child-failed", { ticketId: parent, childId, detail: detail.slice(0, 200) });
+    return true;
   }
 
   /** `budget.near` is recorded once per dimension — the early warning is evidence, not a log line. */
@@ -689,7 +743,11 @@ export class Engine {
     const r = this.db
       .prepare("UPDATE ticket SET state = 'ended', stopped_by = ?, stopped_at = ?, updated_at = ? WHERE id = ? AND state = 'open'")
       .run(byLogin, now, now, id);
-    if (r.changes > 0) this.ledger.emit("ticket.stopped", { ticketId: id, by: byLogin });
+    if (r.changes > 0) {
+      this.ledger.emit("ticket.stopped", { ticketId: id, by: byLogin });
+      const parent = (this.db.prepare("SELECT parent_ticket_id p FROM ticket WHERE id = ?").get(id) as { p: number | null } | undefined)?.p;
+      if (parent) this.parkParentForChildFailure(id, `child stopped by ${byLogin}`); // v2.0: the parent decides
+    }
     return r.changes > 0;
   }
 
@@ -705,7 +763,8 @@ export class Engine {
       LEFT JOIN assignment la ON la.ticket_id = t.id
         AND la.id = (SELECT MAX(b.id) FROM assignment b WHERE b.ticket_id = t.id)
       WHERE t.state = 'open'
-        AND NOT EXISTS (SELECT 1 FROM kv k WHERE k.k IN ('budget-held:' || t.id, 'milestone-held:' || t.id)) -- v1.11: held for a person
+        AND NOT EXISTS (SELECT 1 FROM kv k WHERE k.k IN ('budget-held:' || t.id, 'milestone-held:' || t.id, 'child-failed:' || t.id)) -- v1.11/v2.0: held for a person
+        AND NOT EXISTS (SELECT 1 FROM ticket c WHERE c.parent_ticket_id = t.id AND c.state = 'open') -- v2.0 teams: waiting-children
         AND (
         la.id IS NULL OR (la.state = 'ended' AND la.exit_code = 0)
         OR (t.requeued_at IS NOT NULL AND la.state = 'ended' AND t.requeued_at >= la.ended_at)
@@ -768,13 +827,20 @@ export class Engine {
     this.ledger.emit("assignment.ended", { assignmentId: id, exitCode, timedOut });
   }
 
-  /** A ready report ends the Ticket completed (stopped_by stays NULL ⇒ new work opens a new ticket). */
+  /** A ready report ends the Ticket completed (stopped_by stays NULL ⇒ new work opens a new ticket).
+   *  v2.0 teams: a CHILD completing updates the parent — the last settled child completes it. */
   completeTicket(id: number): boolean {
     const r = this.db
       .prepare("UPDATE ticket SET state = 'ended', updated_at = ? WHERE id = ? AND state = 'open'")
       .run(new Date().toISOString(), id);
-    if (r.changes > 0) this.ledger.emit("ticket.ended", { ticketId: id });
-    return r.changes > 0;
+    if (r.changes === 0) return false;
+    this.ledger.emit("ticket.ended", { ticketId: id });
+    const parent = (this.db.prepare("SELECT parent_ticket_id p FROM ticket WHERE id = ?").get(id) as { p: number | null } | undefined)?.p;
+    if (parent && this.pendingChildren(parent) === 0 && !this.kvGet(`child-failed:${parent}`)) {
+      this.ledger.emit("ticket.children-settled", { ticketId: parent });
+      this.completeTicket(parent); // the delegation's work is wholly done — the parent ends
+    }
+    return true;
   }
 
   /** Public reply enqueue for adapters acting after commit (work reports, notices). */
@@ -895,6 +961,8 @@ export class Engine {
       const stage: TicketView["stage"] = state === "ended"
         ? "ended"
         : this.budgetHold(id) || this.milestoneHold(id) ? "needs-person" // v1.11: held for a person (budget / milestone)
+        : this.kvGet(`child-failed:${id}`) !== null ? "needs-person" // v2.0: a child failed — the person decides
+        : this.db.prepare("SELECT 1 FROM ticket WHERE parent_ticket_id = ? AND state = 'open'").get(id) ? "waiting-children" // v2.0 teams
         : !a ? "queued"
         : a.state === "running" ? "working"
         : a.exitCode === 0 ? "queued" // ended cleanly but ticket reopened (resume) — re-claimable

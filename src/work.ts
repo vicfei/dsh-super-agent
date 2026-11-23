@@ -7,8 +7,9 @@ import { dirname, join } from "node:path";
 import { clipReply } from "./clip.js";
 import { budgetPolicyOf } from "./domain.js";
 import { budgetGateAfterRun, budgetGateBeforeRun, budgetRunTimeoutMs, budgetUsageOf } from "./budget.js";
-import { milestonesEnabled } from "./domain.js";
+import { milestonesEnabled, teamsPolicyOf } from "./domain.js";
 import { readMilestones } from "./milestones.js";
+import { consumeDelegationFile } from "./teams.js";
 import type { Engine, SpillFile } from "./engine.js";
 import { Executor, type ExecutorResult } from "./executor.js";
 import type { GitHubClient } from "./github/client.js";
@@ -241,10 +242,25 @@ export async function runWork(
       if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // evidence only — the ticket is done
       reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: "exit 0 · speculative (silent, awaiting promote)" });
     } else if (ok) {
+      // v2.0 teams (P3-2): the worker may delegate independent sub-work — the ENGINE opens
+      // child tickets (gated by policy.teams caps, parent-linked, ledger-evidenced); children
+      // may not delegate again (depth cap). The parent waits until every child settles.
+      const policy = engine.policy();
+      const teams = teamsPolicyOf(policy);
+      const delegation = teams.enabled && !engine.isChildTicket(t.id) ? consumeDelegationFile(result.worktree) : null;
+      if (delegation) {
+        const count = Math.min(delegation.count, teams.maxChildren);
+        const childIds = engine.createChildTickets(t.id, delegation.prompt, count, `team delegation: ${delegation.title}`, policy?.version ?? 0);
+        if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // parent still open
+        reports.push({
+          ticketId: t.id, assignmentId, outcome: "done",
+          detail: `exit 0 · delegated to ${childIds.length} child ticket(s) — parent waits for the team`,
+        });
+        continue;
+      }
       // v1.11 milestone gate: a segment finished with items pending — hold for a person before
       // the next segment. Needs the approval surface (the ask travels as digit `1`); without it
       // the gate is inert, never a stranded ticket.
-      const policy = engine.policy();
       const ms = milestonesEnabled(policy) && policy?.approval?.enabled === true ? readMilestones(result.worktree) : null;
       if (ms) engine.recordMilestones(t.id, ms.done, ms.pending);
       if (ms && ms.pending.length > 0) {
@@ -270,6 +286,10 @@ export async function runWork(
       reports.push({ ticketId: t.id, assignmentId, outcome: "done", detail: delivery.prUrl ? `exit 0 · PR opened` : "exit 0" });
     } else {
       if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // open + over cap → held for a person
+      if (engine.isChildTicket(t.id)) {
+        const d = result.timedOut ? "timeout" : `exit ${result.exitCode}`;
+        engine.parkParentForChildFailure(t.id, `child #${t.id} failed (${d})`); // the parent decides
+      }
       engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId, reportBody(t.id, result));
       reports.push({
         ticketId: t.id, assignmentId, outcome: "failed",

@@ -190,6 +190,7 @@ const engine = new Engine(args.db);
 // #144: the watch daemon's panel must drain BEFORE the finally-close takes the database —
 // a live panel polls every 3s, so an unguarded close gets hit within seconds and hangs SIGTERM.
 let panelServer: import("./panel.js").PanelServer | undefined;
+let a2aServer: import("./a2a.js").A2AServer | undefined;
 
 function readPolicyConfig(opts: { skipRoutineValidation?: boolean } = {}): Policy {
   if (!existsSync(args.config) && scaffoldFromExample(args.config, "policy.json")) {
@@ -458,6 +459,24 @@ try {
       console.log(`imessage: watchlisted ${handles.length} handle(s) — AppleScript polling, fail-closed groups, DMs inherently addressed`);
     }
 
+    // A2A delegation channel (v2.0 P3-1, #176): external agents knock through the SAME
+    // admission table. Transport auth (A2A_TOKEN) is loud-required; admission is the gate's.
+    if (policy.a2a?.enabled) {
+      if (!process.env.A2A_TOKEN) die("policy.a2a.enabled but A2A_TOKEN is unset — refusing to expose an unauthenticated delegation endpoint");
+      const { A2ASource, A2AReplyChannel, startA2AServer } = await import("./a2a.js");
+      const a2a = await import("./domain.js").then((m) => m.a2aPolicyOf(policy));
+      const a2aSource = new A2ASource();
+      sources.push(a2aSource);
+      channels.push(new A2AReplyChannel(engine, (l) => console.log(l)));
+      const a2aPort = Number(process.env.A2A_PORT ?? 8791);
+      a2aServer = await startA2AServer({
+        engine, source: a2aSource, policy,
+        port: a2aPort, host: process.env.A2A_HOST ?? "0.0.0.0", token: process.env.A2A_TOKEN,
+        log: (l) => console.log(l),
+      });
+      console.log(`a2a: delegation endpoint on http://${process.env.A2A_HOST ?? "0.0.0.0"}:${a2aPort}${a2a.path} — card at /.well-known/agent-card.json (bearer A2A_TOKEN; callers in policy.a2a.allowedAgents)`);
+    }
+
     await runWatch({
       engine,
       sources,
@@ -476,6 +495,7 @@ try {
     // The loop only returns on SIGINT/SIGTERM — drain the panel FIRST (handlers go 503),
     // so the finally-close below can take the database without a live request hitting it.
     panelServer?.shutdown();
+    a2aServer?.shutdown();
   } else if (command === "work") {
     if (!args.repo) die(`--repo owner/name is required${WITH_HELP}`);
     const execCfg = loadExecutorConfig();

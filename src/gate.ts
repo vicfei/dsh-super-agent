@@ -50,7 +50,11 @@ export function evaluateGate(policy: Policy, trigger: Trigger): GateResult {
 function evaluateGateInner(policy: Policy, trigger: Trigger): GateResult {
   if (trigger.source === "timer") return evaluateTimerGate(policy, trigger);
   const row = rowOf(policy, trigger);
-  const listed = policy.allowedList.map(lc).includes(lc(trigger.author.login));
+  // v2.0 A2A: agent identities live in policy.a2a.allowedAgents — a SEPARATE list from the
+  // human allowedList (delegation callers are agents, not humans, per the design page).
+  const listed = trigger.source === "a2a"
+    ? (policy.a2a?.allowedAgents ?? []).map(lc).includes(lc(trigger.author.login))
+    : policy.allowedList.map(lc).includes(lc(trigger.author.login));
   const knownBot = trigger.author.isBot || policy.botList.map(lc).includes(lc(trigger.author.login));
 
   if (knownBot) {

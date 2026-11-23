@@ -1,3 +1,19 @@
+## 2.0.0 — the delegation-edge release
+
+- A2A channel (#176/#177): external agents submit work through the SAME admission table —
+  Agent Card at the well-known path, `message/send` → `a2a`-scope trigger (push-buffer
+  source), relay replies to registered callbacks, task status endpoint always pollable.
+  The protocol carries no admission; dsh supplies the constitution: bearer = transport
+  auth, caller identity = admission input (agent identities live in `policy.a2a.allowedAgents`,
+  separate from the human list), unlisted callers gated like anyone, one hash-chained row
+  per delegation. Default off; refuses to arm without `A2A_TOKEN`.
+- Worker-spawned teams (#176/#178): the worker asks via `.dsh/delegate.md` (one-way,
+  informative); the ENGINE opens parent-linked child tickets under `policy.teams` caps,
+  inheriting the parent's scope admission. The parent waits (`waiting-children`) until the
+  team settles; **a child failure flows into the parent's needs-person**. Depth cap: children
+  don't delegate. The org chart of a ticket tree is computable from the ledger.
+- Retention-inversion argument in the README (v1.11, restated here for the launch narrative).
+
 ## 1.11.0 — the stamina release
 
 - Budget gates (#171/#172): `policy.budget` gives a ticket four optional caps — cumulative

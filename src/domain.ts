@@ -130,8 +130,8 @@ export function a2aPolicyOf(policy: Policy): A2APolicy & { path: string } {
   return { enabled: false, path: "/a2a", allowedAgents: [], ...(policy.a2a ?? {}) };
 }
 
-export function teamsPolicyOf(policy: Policy): { enabled: boolean; maxChildren: number; maxDepth: number } {
-  const t = policy.teams ?? {};
+export function teamsPolicyOf(policy: Policy | null | undefined): { enabled: boolean; maxChildren: number; maxDepth: number } {
+  const t = policy?.teams ?? {};
   return { enabled: t.enabled === true, maxChildren: t.maxChildren ?? 4, maxDepth: t.maxDepth ?? 1 };
 }
 

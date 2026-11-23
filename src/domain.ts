@@ -10,7 +10,7 @@ export interface Actor {
 
 /** Where a Trigger came from. `timer` = the clock (v1.2 routines) — a trigger like any other;
  * `cli` = the terminal chat (v1.9) — an im_dm trigger like any other, same admission table. */
-export type TriggerSource = "github" | "feishu" | "slack" | "wechat" | "telegram" | "timer" | "cli" | "imessage";
+export type TriggerSource = "github" | "feishu" | "slack" | "wechat" | "telegram" | "timer" | "cli" | "imessage" | "a2a";
 
 /** One immutable event with the Source's own metadata. Unit of audit and idempotence. */
 export interface Trigger {
@@ -39,7 +39,9 @@ export type Scope =
   /** IM direct message (WeChat/Feishu/Slack DM) — shared row for all IM sources. */
   | "im_dm"
   /** IM group chat / channel message — shared row for all IM sources. */
-  | "im_group";
+  | "im_group"
+  /** External agent delegation (v2.0 A2A channel) — agent identities, not humans. */
+  | "a2a";
 
 /** Strength of an admitted Trigger. Explicit works in every accept mode; inferred is mode-gated. */
 export type Strength = "explicit" | "inferred";
@@ -97,6 +99,40 @@ export interface Policy {
   /** Milestone gates (v1.11, issue #173): a run that finishes with pending milestones
    *  holds the ticket for a person before the next segment. Absent = disabled. */
   milestones?: { enabled?: boolean };
+  /** A2A delegation channel (v2.0, Phase 3): external agents submit work as triggers.
+   *  Absent or enabled:false = no endpoint, nothing listens. */
+  a2a?: A2APolicy;
+  /** Worker-spawned teams (v2.0, Phase 3): child tickets via .dsh/delegate.md.
+   *  Absent or enabled:false = delegation files are ignored. */
+  teams?: TeamsPolicy;
+}
+
+/** A2A (Phase 3, #176): external agents knock through the same admission table.
+ *  The endpoint requires A2A_TOKEN (env, shared bearer v1) — unset means refused. */
+export interface A2APolicy {
+  enabled?: boolean;
+  /** JSON-RPC endpoint path (default /a2a). The Agent Card serves at /.well-known/. */
+  path?: string;
+  /** Registered external agent identities; unlisted callers fall to unlistedAddressing. */
+  allowedAgents?: string[];
+}
+
+/** Worker-spawned teams (Phase 3): team expansion itself goes through a gate. */
+export interface TeamsPolicy {
+  enabled?: boolean;
+  /** Children one parent may open per run (default 4). */
+  maxChildren?: number;
+  /** Delegation depth cap (default 1 — children may not delegate). */
+  maxDepth?: number;
+}
+
+export function a2aPolicyOf(policy: Policy): A2APolicy & { path: string } {
+  return { enabled: false, path: "/a2a", allowedAgents: [], ...(policy.a2a ?? {}) };
+}
+
+export function teamsPolicyOf(policy: Policy): { enabled: boolean; maxChildren: number; maxDepth: number } {
+  const t = policy.teams ?? {};
+  return { enabled: t.enabled === true, maxChildren: t.maxChildren ?? 4, maxDepth: t.maxDepth ?? 1 };
 }
 
 export function milestonesEnabled(policy: Policy | null | undefined): boolean {

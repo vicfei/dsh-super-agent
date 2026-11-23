@@ -67,7 +67,7 @@ export function envReferences(command: string, prepare?: string): string[] {
   return [...refs].sort();
 }
 
-const VALID_SCOPES = new Set(["issue", "issue_comment", "pr", "pr_comment", "review_comment", "ci", "im_dm", "im_group"]);
+const VALID_SCOPES = new Set(["issue", "issue_comment", "pr", "pr_comment", "review_comment", "ci", "im_dm", "im_group", "a2a"]);
 const VALID_CELLS = new Set(["inferred", "ignore"]);
 
 function headBin(command: string): string {

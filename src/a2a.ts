@@ -213,6 +213,98 @@ export async function startA2AServer(opts: A2AServerOptions): Promise<A2AServer>
   return out;
 }
 
+// ── the outbound half (slice 4): `dsh a2a send` — a thin A2A client ───────────────
+
+export interface A2ASendOptions {
+  /** The remote's JSON-RPC endpoint, path included — e.g. http://wsl2:8791/a2a */
+  url: string;
+  /** Shared bearer (transport auth, the same v1 identity the server side checks). */
+  token: string;
+  prompt: string;
+  /** Caller identity the remote's policy.a2a.allowedAgents admits against. */
+  caller: string;
+  /** Poll tasks/<id> to a terminal state and surface the report. */
+  wait: boolean;
+  /** Poll interval (default 2s) and overall wait budget (default 30min). */
+  intervalMs?: number;
+  timeoutMs?: number;
+  log?: (l: string) => void;
+}
+
+export interface A2ASendResult {
+  taskId: string;
+  /** Terminal A2A task state when waited out; "submitted" when fire-and-forget. */
+  state: string;
+  report?: string;
+  /** 0 completed · 1 transport/protocol error · 2 remote ended not-done (input-required,
+   *  failed, canceled) · 3 wait budget exhausted while still working. */
+  exitCode: number;
+}
+
+const TERMINAL_NOT_DONE = new Set(["input-required", "failed", "canceled", "rejected"]);
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** One delegation over the wire: message/send (client-chosen task id ⇒ idempotent — the
+ *  server dedups on the trigger id), then optionally poll the status endpoint the same
+ *  server always serves. "unknown" from the status endpoint means the remote's watch
+ *  cycle has not ingested the buffered trigger yet — that is pending, not an error. */
+export async function a2aSend(opts: A2ASendOptions): Promise<A2ASendResult> {
+  const endpoint = opts.url.replace(/\/+$/, "");
+  const taskId = crypto.randomUUID();
+  const auth = { authorization: `Bearer ${opts.token}`, "content-type": "application/json" };
+  const say = opts.log ?? (() => {});
+  const intervalMs = opts.intervalMs ?? 2_000;
+  const deadline = Date.now() + (opts.timeoutMs ?? 30 * 60_000);
+
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "message/send",
+        params: {
+          id: taskId,
+          message: { role: "user", parts: [{ kind: "text", text: opts.prompt }], metadata: { caller: opts.caller } },
+        },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e) {
+    return { taskId, state: "send-failed", exitCode: 1, ...(e instanceof Error ? { report: e.message } : {}) };
+  }
+  const rpc = (await res.json().catch(() => null)) as
+    | { result?: { task?: { id?: string; state?: string } }; error?: { message?: string } }
+    | null;
+  if (!res.ok || !rpc?.result?.task) {
+    const why = rpc?.error?.message ?? `HTTP ${res.status}`;
+    return { taskId, state: "send-failed", exitCode: 1, report: why };
+  }
+  say(`[a2a] task ${taskId} ${rpc.result.task.state} at ${endpoint} (caller: ${opts.caller})`);
+  if (!opts.wait) return { taskId, state: String(rpc.result.task.state ?? "submitted"), exitCode: 0 };
+
+  while (Date.now() < deadline) {
+    await sleep(intervalMs);
+    let st: { state?: string; report?: string } | null = null;
+    try {
+      const r = await fetch(`${endpoint}/tasks/${taskId}`, { headers: auth, signal: AbortSignal.timeout(15_000) });
+      st = (await r.json().catch(() => null)) as { state?: string; report?: string } | null;
+    } catch {
+      st = null; // transient poll failure — the next interval retries
+    }
+    const state = String(st?.state ?? "unknown");
+    if (state === "completed") return { taskId, state, ...(st?.report ? { report: st.report } : {}), exitCode: 0 };
+    if (TERMINAL_NOT_DONE.has(state)) return { taskId, state, ...(st?.report ? { report: st.report } : {}), exitCode: 2 };
+    say(`[a2a] task ${taskId} ${state} — still waiting`);
+  }
+  return { taskId, state: "timeout", exitCode: 3 };
+}
+
 // ── relay: replies back to the delegating agent ──────────────────────────────────
 
 /** The A2A relay: task updates for delegation-origin threads. Pushes to the caller's

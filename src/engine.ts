@@ -168,6 +168,10 @@ export interface TicketView {
   followUps: number;
   /** v1.0: rehearsing silently — delivery needs a human promote. */
   speculative: boolean;
+  /** v2.0 slice 5: the delegation parent when this is a child ticket. */
+  parent?: number;
+  /** v2.0 slice 4: fleet node a child ticket is routed to (delegate.md `node:`). */
+  targetNode?: string;
   createdAt: string;
 }
 
@@ -638,8 +642,10 @@ export class Engine {
 
   /** Open `count` child tickets for a parent: one synthesized trigger each, parent-linked,
    *  inheriting the parent's scope admission (the delegation was gated by policy.teams +
-   *  the parent's own ticket). One ledger row per child, one for the delegation itself. */
-  createChildTickets(parentId: number, prompt: string, count: number, basis: string, policyVersion: number): number[] {
+   *  the parent's own ticket). One ledger row per child, one for the delegation itself.
+   *  `node` (slice 4) routes every child of this delegation to a fleet node — the work
+   *  runs there via its A2A endpoint, not the local executor. */
+  createChildTickets(parentId: number, prompt: string, count: number, basis: string, policyVersion: number, node?: string): number[] {
     const parent = this.db
       .prepare("SELECT t.thread_id, t.opener_login, tr.source, tr.scope FROM ticket t JOIN trigger tr ON tr.id = t.trigger_id WHERE t.id = ?")
       .get(parentId) as { thread_id: string; opener_login: string; source: string; scope: string } | undefined;
@@ -655,12 +661,18 @@ export class Engine {
         .prepare("INSERT INTO ticket (thread_id, trigger_id, opener_login, strength, policy_version, basis, parent_ticket_id, created_at, updated_at) VALUES (?, ?, ?, 'explicit', ?, ?, ?, ?, ?)")
         .run(parent.thread_id, tid, parent.opener_login, policyVersion, basis, parentId, now, now);
       const childId = Number(info.lastInsertRowid);
-      this.ledger.emit("ticket.opened", { ticketId: childId, threadId: parent.thread_id, opener: parent.opener_login, strength: "explicit", parent: parentId });
+      if (node) this.kvSet(`child-node:${childId}`, node);
+      this.ledger.emit("ticket.opened", { ticketId: childId, threadId: parent.thread_id, opener: parent.opener_login, strength: "explicit", parent: parentId, ...(node ? { node } : {}) });
       ids.push(childId);
     }
-    this.ledger.emit("ticket.delegated", { ticketId: parentId, children: ids, prompt: prompt.slice(0, 200) });
+    this.ledger.emit("ticket.delegated", { ticketId: parentId, children: ids, prompt: prompt.slice(0, 200), ...(node ? { node } : {}) });
     this.kvSet(`children-pending:${parentId}`, String(ids.length));
     return ids;
+  }
+
+  /** The fleet node a child ticket is routed to, if any (slice 4). */
+  ticketTargetNode(ticketId: number): string | null {
+    return this.kvGet(`child-node:${ticketId}`);
   }
 
   /** Children still working for this parent. */
@@ -755,8 +767,10 @@ export class Engine {
 
   /** Open tickets claimable by work: never assigned, or last assignment ended cleanly
    * (a resumed ticket is re-claimable; a failed one waits for a person). The body is the
-   * accumulated context: original request + subscription-bypass follow-ups in order. */
-  claimQueued(limit: number): { id: number; threadId: string; body: string; author: string; spills: SpillFile[]; speculative: boolean }[] {
+   * accumulated context: original request + subscription-bypass follow-ups in order.
+   * `targetNode` (slice 4): the fleet node a child is routed to — the caller resolves it
+   * against policy.teams.endpoints before dispatch. */
+  claimQueued(limit: number): { id: number; threadId: string; body: string; author: string; spills: SpillFile[]; speculative: boolean; targetNode?: string }[] {
     const rows = this.db.prepare(`
       SELECT t.id, t.thread_id, tr.body, tr.author_login, t.speculative
       FROM ticket t JOIN trigger tr ON tr.id = t.trigger_id
@@ -807,7 +821,8 @@ export class Engine {
       }
       const speculative = r.speculative === 1;
       if (speculative && openSpec > cap) return null; // cap reached: leave rehearsing for a later claim
-      return { id, threadId: String(r.thread_id), body: parts.join("\n\n"), author: String(r.author_login), spills, speculative };
+      const targetNode = this.kvGet(`child-node:${id}`) ?? undefined;
+      return { id, threadId: String(r.thread_id), body: parts.join("\n\n"), author: String(r.author_login), spills, speculative, ...(targetNode ? { targetNode } : {}) };
     }).filter((x): x is NonNullable<typeof x> => x !== null);
   }
 
@@ -981,6 +996,8 @@ export class Engine {
         resumedCount: Number(r.resumed_count),
         followUps: followUps.get(id) ?? 0,
         speculative: r.speculative === 1,
+        ...(r.parent_ticket_id !== null ? { parent: Number(r.parent_ticket_id) } : {}),
+        ...(this.kvGet(`child-node:${id}`) !== null ? { targetNode: this.kvGet(`child-node:${id}`) as string } : {}),
         createdAt: String(r.created_at),
       };
     });

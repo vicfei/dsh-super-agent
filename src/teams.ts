@@ -13,17 +13,21 @@ export interface DelegationRequest {
   reason: string;
   prompt: string;
   count: number;
+  /** Slice 4: route the children to a fleet node (policy.teams.endpoints lookup).
+   *  Absent = local executor, exactly the pre-slice-4 behavior. */
+  node?: string;
 }
 
-/** Parse `.dsh/delegate.md` (title / reason / prompt / count; prompt may span lines). */
+/** Parse `.dsh/delegate.md` (title / reason / prompt / count / optional node; prompt may span lines). */
 export function parseDelegation(markdown: string): DelegationRequest | null {
   const title = /^title:\s*(.+)$/m.exec(markdown)?.[1]?.trim();
-  const promptMatch = /^prompt:[ \t]*([^\n]*(?:\n(?!(?:title|reason|count):)[^\n]*)*)/m.exec(markdown);
+  const promptMatch = /^prompt:[ \t]*([^\n]*(?:\n(?!(?:title|reason|count|node):)[^\n]*)*)/m.exec(markdown);
   if (!title || !promptMatch || !promptMatch[1].trim()) return null;
   const reason = /^reason:\s*(.+)$/m.exec(markdown)?.[1]?.trim() ?? "";
   const countRaw = /^count:\s*(\d+)\s*$/m.exec(markdown)?.[1];
   const count = Math.max(1, Math.min(10, Number(countRaw ?? 1) || 1));
-  return { title, reason, prompt: promptMatch[1].trim(), count };
+  const node = /^node:[ \t]*([a-z0-9][a-z0-9-]*)[ \t]*$/im.exec(markdown)?.[1]?.toLowerCase();
+  return { title, reason, prompt: promptMatch[1].trim(), count, ...(node ? { node } : {}) };
 }
 
 /** Consume `.dsh/delegate.md` from the worktree (moved aside like the approval request).

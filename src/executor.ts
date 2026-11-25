@@ -174,8 +174,10 @@ export class Executor {
   }
 
   /** Throws on blocked command, prepare failure, or unusable config — the caller records failure.
-   * `memory` (v1.4): accepted durable-tier facts appended to DSH_PROMPT.md as project memory. */
-  async run(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string, memory: string[] = [], opts: { timeoutMs?: number } = {}): Promise<ExecutorResult> {
+   * `memory` (v1.4): accepted durable-tier facts appended to DSH_PROMPT.md as project memory.
+   * `opts.target` (v2.0 slice 4): a child routed to a fleet node — the command template
+   * branches on $DSH_TARGET_URL to delegate over A2A instead of running a local worker. */
+  async run(ticket: { id: number; threadId: string }, trigger: { body: string; author: string }, repo: string, memory: string[] = [], opts: { timeoutMs?: number; target?: { node: string; url: string } } = {}): Promise<ExecutorResult> {
     const blocked = this.cfg.blockedCommands.find((b) => this.cfg.command.includes(b));
     if (blocked) throw new Error(`executor command blocked by name: ${blocked}`);
 
@@ -223,6 +225,7 @@ export class Executor {
         DSH_THREAD: ticket.threadId,
         DSH_REPO: repo,
         DSH_AUTHOR: trigger.author,
+        ...(opts.target ? { DSH_TARGET_NODE: opts.target.node, DSH_TARGET_URL: opts.target.url } : {}),
       },
     });
     const timedOut = run.code === null;
@@ -272,9 +275,10 @@ export function renderPrompt(ticket: { id: number; threadId: string }, trigger: 
     "- For multi-step work keep a checklist at $DSH_MILESTONES_FILE (lines like \"- [x] done\" / \"- [ ] pending\").",
     "  When milestone gates are on, a finished run with pending items pauses for the owner's approval",
     "  before the next segment — it is a progress report, never a permission.",
-    "- If part of the remaining work is INDEPENDENT sub-work, you may delegate it: write title /",
-    "  reason / prompt / count to $DSH_DELEGATE_FILE (one-way; the engine opens gated child",
-    "  tickets and this parent waits for the team). Only when teams are enabled; never invent sub-work.",
+        "- If part of the remaining work is INDEPENDENT sub-work, you may delegate it: write title /",
+        "  reason / prompt / count (optional `node: <name>` to run it on a fleet node) to",
+        "  $DSH_DELEGATE_FILE (one-way; the engine opens gated child tickets and this parent",
+        "  waits for the team). Only when teams are enabled; never invent sub-work.",
     "",
     "## Scope — carry through or stop, by impact",
     "",

@@ -16,6 +16,10 @@ Commands:
   chat      the terminal as a sixth channel: REPL → gate → work → report, digits approve
   watch     poll + work + panel as one daemon (Ctrl-C stops after the current cycle)
   tickets   list tickets; "tickets stop <id>" ends one
+  a2a       send — the outbound delegation client: message/send → poll → report
+            (--url endpoint --prompt-file f [--wait] [--caller id]; token via --token /
+             --token-file / A2A_TOKEN; --interval = poll seconds; exit 0 completed ·
+             1 transport · 2 remote not-done · 3 wait budget)
   panel     serve the awaiting-human panel (http://127.0.0.1:8787)
   merge     sweep open ticket PRs — merge those meeting policy.merge requirements (default off)
   routines  list | validate | fire <id> — scheduled timer triggers through the admission gate

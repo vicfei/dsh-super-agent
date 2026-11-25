@@ -1,3 +1,25 @@
+## 2.0.1 — the node-routed followup
+
+- Node-routed delegation (#176/#180): `delegate.md` grows an optional `node:` field —
+  `policy.teams.endpoints` maps node → that node's A2A endpoint; the engine stores the
+  route per child, resolves it at claim time and exports `DSH_TARGET_URL` /
+  `DSH_TARGET_NODE` to the executor command template, which branches: local worker when
+  unset, the A2A client when set. **Any CLI is a worker; the engine stays surgery-free.**
+  An unresolvable node is a config error: the child fails loudly and the parent parks for
+  a person — the team's failure keeps one owner.
+- `dsh a2a send` — the outbound delegation client: `message/send` with a client-chosen
+  task id (idempotent — the server dedups on the trigger id), then polling `tasks/<id>`
+  to a terminal state. Exit contract: `0` completed · `1` transport/protocol · `2` remote
+  not-done (input-required / failed / canceled) · `3` wait budget exhausted. Token via
+  `--token` / `--token-file` / `A2A_TOKEN` — never a worker env by default.
+- Panel ticket trees (slice 5): `TicketView` carries `parent` / `targetNode`; the panel
+  grows a "Delegation trees" section (children indented under the parent,
+  waiting-children badge, live teams only — settled trees are ledger history); `dsh
+  tickets` prints `parent=#N →node`.
+- e2e proof: the full chain runs against dsh's own A2A server as the remote node — real
+  HTTP hop, real CLI subprocess inside the child's executor template. Fleet dogfood
+  (singapore ↔ wsl2) follows Tailscale deployment.
+
 ## 2.0.0 — the delegation-edge release
 
 - A2A channel (#176/#177): external agents submit work through the SAME admission table —

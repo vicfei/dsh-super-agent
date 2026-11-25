@@ -243,10 +243,10 @@ two-tier memory design exists to remove.
 
 治理论题的下一格：从"管自家 agent"到"管委托边"。**这是唯一一个 LofiSu 只做了功能、我们要做成制度的项。**
 
-- [x] **P3-1 A2A 通道**（#6，#176/#177，v2.0.0）：入站——外部 agent 经 A2A 协议提交任务 = 新 scope `a2a` 的 trigger，过准入表、落账本；出站——replies 走 relay（注册了回调即推送，否则任务状态端点可轮询）。Agent Card 声明我们的能力面。拧劲：跨 agent 委托首次可审计——谁的外部 agent、凭什么 scope、每次委托一行哈希链。节点间执行器（slice 4，fleet dogfood）随 Tailscale 部署跟进。
-- [x] **P3-2 Worker 派生团队**（#1，#176/#178，v2.0.0）：worker 经文件约定（`.dsh/delegate.md`，同 approval-request 的单向模式）申请派生子工单；引擎开**子 ticket**（parent 链接、独立账本行、继承 scope 准入）而非 worker 自己乱拉进程。拧劲：团队扩张本身过闸——LofiSu 给了 worker 自由，我们给自由上账。面板树视图（slice 5）跟进。
+- [x] **P3-1 A2A 通道**（#6，#176/#177，v2.0.0）：入站——外部 agent 经 A2A 协议提交任务 = 新 scope `a2a` 的 trigger，过准入表、落账本；出站——replies 走 relay（注册了回调即推送，否则任务状态端点可轮询）。Agent Card 声明我们的能力面。拧劲：跨 agent 委托首次可审计——谁的外部 agent、凭什么 scope、每次委托一行哈希链。节点间执行器（slice 4，v2.0.1：node 路由 + `dsh a2a send` 回环 e2e 已落地；fleet dogfood 随 Tailscale 部署跟进）。
+- [x] **P3-2 Worker 派生团队**（#1，#176/#178，v2.0.0）：worker 经文件约定（`.dsh/delegate.md`，同 approval-request 的单向模式）申请派生子工单；引擎开**子 ticket**（parent 链接、独立账本行、继承 scope 准入）而非 worker 自己乱拉进程。拧劲：团队扩张本身过闸——LofiSu 给了 worker 自由，我们给自由上账。面板树视图（slice 5，v2.0.1）。
 
-验收（slice 1-3 已达成 2026-11-23，slice 4-5 跟进）：A2A 双向冒烟（curl → 准入 → relay/状态端点）+ 子工单端到端（含"子工单失败汇入父工单 needs-person"路径）；v2.0.0 + 发射帖路线图兑现素材。
+验收（slice 1-5 全数达成：1-3 于 2026-11-23，4-5 于 2026-11-25 v2.0.1；fleet dogfood 随 Tailscale）：A2A 双向冒烟（curl → 准入 → relay/状态端点）+ 子工单端到端（含"子工单失败汇入父工单 needs-person"路径）；v2.0.0 + 发射帖路线图兑现素材。
 
 ### Phase 4 — 上下文与记忆纵深（v2.1，~2-3 周）
 

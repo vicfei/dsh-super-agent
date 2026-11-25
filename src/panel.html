@@ -21,6 +21,7 @@
   .b-shadow { background: #d2992233; color: #e3b341; }
   .b-accept { background: #23863633; color: #3fb950; }
   .b-person { background: #a371f733; color: #bc8cff; }
+  .b-child { background: #2f81f733; color: #58a6ff; }
   .mode button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
                  padding: 4px 10px; font: inherit; cursor: pointer; margin-right: 4px; }
   .mode button.on { border-color: #3fb950; color: #3fb950; }
@@ -91,6 +92,10 @@ footer { margin-top: 28px; color: #6e7681; font-size: 12px; }
 <h2 data-i18n="hPersons">By person</h2>
 <div id="persons"></div>
 
+<h2 data-i18n="hTrees">Delegation trees — teams at a glance</h2>
+<div class="quiet" style="margin:-4px 0 8px" data-i18n="hintTrees">worker-delegated sub-work: children hang under their parent; the parent waits (waiting-children) until every child settles</div>
+<div id="trees"></div>
+
 <h2 data-i18n="hApprovals">Pending approvals (IM)</h2>
 <div class="quiet" style="margin:-4px 0 8px" data-i18n="hintApprovals">approval digits ride the ops IM route — the channel prefix on each card (e.g. wechat) says where to reply</div>
 <div id="approvals"></div>
@@ -140,6 +145,9 @@ const I18N = {
     hAwaiting: "Awaiting a human", hSpec: "Rehearsed — speculative backlog",
     hintSpec: "rehearsal only: shadow-accepted work waiting for a person to promote — collapses by opener",
     hTopology: "Topology — the machine at a glance", hPersons: "By person",
+    hTrees: "Delegation trees — teams at a glance",
+    hintTrees: "worker-delegated sub-work: children hang under their parent; the parent waits (waiting-children) until every child settles",
+    noTrees: "no live delegation trees — settled teams live on the evidence ledger",
     hApprovals: "Pending approvals (IM)",
     hintApprovals: "approval digits ride the ops IM route — the channel prefix on each card (e.g. wechat) says where to reply",
     hRoutines: "Routines — the clock", hEvidence: "Evidence — the ledger", hMemory: "Memory — the durable tier",
@@ -183,6 +191,9 @@ const I18N = {
     hAwaiting: "等人来决定", hSpec: "预演——投机积压",
     hintSpec: "仅预演：影子接受、等人 promote 的工作——按 opener 折叠",
     hTopology: "拓扑——机器一览", hPersons: "按人",
+    hTrees: "委托树——团队一览",
+    hintTrees: "worker 委派的子工作：子工单挂在父单下；父单等待（waiting-children）直到全部子单落定",
+    noTrees: "暂无进行中的委托树——已落定的团队在证据账本上",
     hApprovals: "待审批（IM）",
     hintApprovals: "审批数字走 ops IM 路由——卡片上的渠道前缀（如 wechat）标明去哪回复",
     hRoutines: "例行——时钟", hEvidence: "证据——账本", hMemory: "记忆——持久层",
@@ -404,15 +415,37 @@ async function render() {
   document.getElementById('persons').innerHTML = persons.size === 0
     ? `<div class="quiet">${t('noTickets')}</div>`
     : [...persons.entries()].map(([who, p]) => {
-        const counts = ['queued', 'working', 'needs-person', 'ended']
+        const counts = ['queued', 'working', 'waiting-children', 'needs-person', 'ended']
           .map(st => p.tickets.filter(t => t.stage === st).length)
-          .map((n, i) => n > 0 ? `<span class="quiet">${['queued','working','needs-person','ended'][i]}:${n}</span>` : '')
+          .map((n, i) => n > 0 ? `<span class="quiet">${['queued','working','waiting-children','needs-person','ended'][i]}:${n}</span>` : '')
           .filter(Boolean).join(' · ');
         const fu = p.tickets.reduce((n, t) => n + (t.followUps || 0), 0);
         const fuTag = fu > 0 ? ` · <span class="quiet">follow-ups:${fu}</span>` : '';
         const dels = p.deliveries.map(d => `PR #${d.prNumber} ${d.state}`).join(' · ');
         return `<div class="card"><b>${esc(who)}</b> — ${counts || t('noOpenWork')}${fuTag}${dels ? `<div class="quiet">${dels}</div>` : ''}</div>`;
       }).join('');
+
+  // v2.0 slice 5: delegation trees — live teams only (a settled team is history; the ledger
+  // keeps it). Children indent under their parent; waiting-children gets its own badge; a
+  // routed child shows the fleet node it runs on.
+  const byId = new Map(s.tickets.map(t2 => [t2.id, t2]));
+  const kidsOf = new Map();
+  for (const tk of s.tickets) {
+    if (!tk.parent) continue;
+    if (!kidsOf.has(tk.parent)) kidsOf.set(tk.parent, []);
+    kidsOf.get(tk.parent).push(tk);
+  }
+  const treeRow = (tk, child) => {
+    const stage = tk.stage === 'waiting-children' ? '<span class="badge b-child">waiting-children</span>'
+      : tk.stage === 'needs-person' ? '<span class="badge b-person">needs-person</span>'
+      : `<span class="quiet">${esc(tk.stage)}</span>`;
+    const node = tk.targetNode ? ` <span class="quiet">→${esc(tk.targetNode)}</span>` : '';
+    return `<div class="dcheck"${child ? ' style="padding-left:18px"' : ''}>${child ? '<span class="quiet">↳ </span>' : ''}ticket #${tk.id} ${stage} ${esc(threadShort(tk.threadId))} opener=${esc(tk.opener)}${node}</div>`;
+  };
+  const liveRoots = s.tickets.filter(tk => kidsOf.has(tk.id) && (tk.stage !== 'ended' || kidsOf.get(tk.id).some(c => c.stage !== 'ended')));
+  document.getElementById('trees').innerHTML = liveRoots.length === 0
+    ? `<div class="quiet">${t('noTrees')}</div>`
+    : liveRoots.map(root => `<div class="card click" onclick="auditTicket(this, ${root.id})">${treeRow(root, false)}${kidsOf.get(root.id).map(c => treeRow(c, true)).join('')}</div>`).join('');
 
   const aps = s.approvals || [];
   document.getElementById('approvals').innerHTML = aps.length === 0

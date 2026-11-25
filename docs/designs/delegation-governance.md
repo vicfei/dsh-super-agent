@@ -64,12 +64,18 @@ config change, not a governance change.
 ## Part 2 — worker-spawned teams (child tickets)
 
 - The worker asks through **`.dsh/delegate.md`** — the same one-way file convention as
-  the approval request: frontmatter-ish `title / reason / prompt / count`, informative
-  never authoritative.
+  the approval request: frontmatter-ish `title / reason / prompt / count` (plus optional
+  `node:` for fleet routing), informative never authoritative.
 - The engine consumes it after the run: validates against `policy.teams`
   (enabled, `maxChildren` per parent, `maxDepth` — 1 by default), **inherits the
   parent's scope admission**, and opens child tickets: `parent_ticket_id`, their own
   `ticket.opened` rows (with parent), their own worktrees.
+- **Node routing (slice 4)**: a `node:` field routes the children to a fleet node —
+  `policy.teams.endpoints` maps node → that node's A2A endpoint; the engine resolves it
+  at claim time and exports `DSH_TARGET_URL` / `DSH_TARGET_NODE` to the executor command
+  template, which branches: a local worker when unset, `dsh a2a send --wait` when set
+  (any CLI is a worker — the engine stays surgery-free). An unresolvable node is a
+  config error that parks the parent like any child failure.
 - The parent waits (`waiting-children` stage) until children settle. A child failure
   flows **into the parent's needs-person** with the child's failure as context — the
   team's failure has one owner: the person watching the parent.
@@ -83,7 +89,8 @@ config change, not a governance change.
 ```jsonc
 // policy.json additions — both default OFF, like every autonomous capability here
 "a2a":   { "enabled": true, "path": "/a2a", "allowedAgents": ["node-wsl2", "node-shanghai"] },
-"teams": { "enabled": true, "maxChildren": 4, "maxDepth": 1 }
+"teams": { "enabled": true, "maxChildren": 4, "maxDepth": 1,
+           "endpoints": { "wsl2": "http://wsl2:8791/a2a" } }
 ```
 
 ```markdown
@@ -92,6 +99,17 @@ title: translate the docs bundle
 reason: the parent needs zh-CN versions before it can finish; independent work
 prompt: <what the child should do — becomes the child's DSH_PROMPT.md>
 count: 1
+node: wsl2   <!-- optional: run the children on that fleet node -->
+```
+
+```sh
+# executor.json "command" — one template, two halves; the engine exports DSH_TARGET_URL
+# only for node-routed children (token never enters the worker env: --token-file or A2A_TOKEN)
+if [ -n "$DSH_TARGET_URL" ]; then
+  exec dsh a2a send --url "$DSH_TARGET_URL" --token-file ~/.dsh/a2a.token \
+    --prompt-file "$DSH_PROMPT_FILE" --wait --caller node-singapore
+fi
+exec <your local agent CLI>   # unrouted tickets run locally, exactly as before
 ```
 
 - `A2A_TOKEN` (env, per registered agent v1) — never a worker env; the engine holds it.

@@ -124,15 +124,19 @@ export interface TeamsPolicy {
   maxChildren?: number;
   /** Delegation depth cap (default 1 — children may not delegate). */
   maxDepth?: number;
+  /** Slice 4 node routing: fleet node name → that node's A2A JSON-RPC endpoint URL
+   *  (e.g. { "wsl2": "http://wsl2:8791/a2a" }). A delegate.md `node:` field routes the
+   *  child there; the executor command template reads $DSH_TARGET_URL / $DSH_TARGET_NODE. */
+  endpoints?: Record<string, string>;
 }
 
 export function a2aPolicyOf(policy: Policy): A2APolicy & { path: string } {
   return { enabled: false, path: "/a2a", allowedAgents: [], ...(policy.a2a ?? {}) };
 }
 
-export function teamsPolicyOf(policy: Policy | null | undefined): { enabled: boolean; maxChildren: number; maxDepth: number } {
+export function teamsPolicyOf(policy: Policy | null | undefined): { enabled: boolean; maxChildren: number; maxDepth: number; endpoints: Record<string, string> } {
   const t = policy?.teams ?? {};
-  return { enabled: t.enabled === true, maxChildren: t.maxChildren ?? 4, maxDepth: t.maxDepth ?? 1 };
+  return { enabled: t.enabled === true, maxChildren: t.maxChildren ?? 4, maxDepth: t.maxDepth ?? 1, endpoints: t.endpoints ?? {} };
 }
 
 export function milestonesEnabled(policy: Policy | null | undefined): boolean {

@@ -185,6 +185,9 @@ export async function runWork(
   const injectable = memory ? engine.injectableMemories(repo, memory.maxInject) : [];
   // v1.11 budget gates: absent policy = inert; present = every run passes two gates
   const budget = budgetPolicyOf(engine.policy());
+  // v2.0 slice 4: node-routed children resolve their endpoint once per sweep — an unknown
+  // node is a config error the child can never out-run, so it parks like any child failure.
+  const endpoints = teamsPolicyOf(engine.policy()).endpoints;
 
   for (const t of queued) {
     if (budget) {
@@ -197,10 +200,24 @@ export async function runWork(
     }
     const assignmentId = engine.startAssignment(t.id, ""); // running — worktree filled on success
     if (t.spills.length > 0) writeSpills(executor.worktreeOf(t.id), t.spills); // before the run: recall must be readable
+    // v2.0 slice 4: a node-routed child without a resolvable endpoint can never run —
+    // fail the assignment loudly and park the parent (the team's failure has one owner).
+    if (t.targetNode && !endpoints[t.targetNode]) {
+      const detail = `delegation target node "${t.targetNode}" has no endpoint in policy.teams.endpoints`;
+      engine.endAssignment(assignmentId, null, false, detail);
+      if (engine.isChildTicket(t.id)) engine.parkParentForChildFailure(t.id, detail);
+      engine.enqueueReply(`ticket-report:${t.id}:${assignmentId}`, t.threadId, clipReply(couldNotRun(t.id, detail), 150));
+      reports.push({ ticketId: t.id, assignmentId, outcome: "refused", detail });
+      continue;
+    }
+    const target = t.targetNode ? { node: t.targetNode, url: endpoints[t.targetNode] } : undefined;
     let result: ExecutorResult | undefined;
     try {
       result = await executor.run({ id: t.id, threadId: t.threadId }, { body: t.body, author: t.author }, repo, injectable,
-        budget ? { timeoutMs: budgetRunTimeoutMs(budgetUsageOf(engine, t.id), budget, executor.cfg.timeoutMs, engine.budgetWaived(t.id)) } : {});
+        {
+          ...(budget ? { timeoutMs: budgetRunTimeoutMs(budgetUsageOf(engine, t.id), budget, executor.cfg.timeoutMs, engine.budgetWaived(t.id)) } : {}),
+          ...(target ? { target } : {}),
+        });
       // v1.9 P1-1: persona is an auditable input — one ledger row per dispatch pins the
       // file list, order and hash of what the worker actually saw.
       if (result.persona) {
@@ -250,7 +267,7 @@ export async function runWork(
       const delegation = teams.enabled && !engine.isChildTicket(t.id) ? consumeDelegationFile(result.worktree) : null;
       if (delegation) {
         const count = Math.min(delegation.count, teams.maxChildren);
-        const childIds = engine.createChildTickets(t.id, delegation.prompt, count, `team delegation: ${delegation.title}`, policy?.version ?? 0);
+        const childIds = engine.createChildTickets(t.id, delegation.prompt, count, `team delegation: ${delegation.title}`, policy?.version ?? 0, delegation.node);
         if (budget) budgetGateAfterRun(engine, budget, t.id, result.worktree); // parent still open
         reports.push({
           ticketId: t.id, assignmentId, outcome: "done",

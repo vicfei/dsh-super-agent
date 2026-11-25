@@ -78,6 +78,12 @@ function parseOrDie() {
         web: { type: "boolean", default: false },
         // chat (v1.9 P1-2): the login the operator speaks as
         as: { type: "string" },
+        // a2a send (v2.0 slice 4): the thin outbound client
+        url: { type: "string" },
+        "prompt-file": { type: "string" },
+        "token-file": { type: "string" },
+        wait: { type: "boolean", default: false },
+        caller: { type: "string" },
       },
     });
   } catch (e) {
@@ -93,7 +99,7 @@ if (args.version) {
   process.exit(0);
 }
 
-const COMMANDS = ["poll", "work", "chat", "watch", "tickets", "panel", "fleet", "merge", "health", "stats", "review", "routines", "events", "ops", "ops", "init", "doctor", "wechat-login", "help"] as const;
+const COMMANDS = ["poll", "work", "chat", "watch", "tickets", "panel", "fleet", "merge", "health", "stats", "review", "routines", "events", "ops", "ops", "init", "doctor", "a2a", "wechat-login", "help"] as const;
 const command = positionals[0] ?? "poll";
 if (args.help || command === "help") {
   console.log(USAGE);
@@ -184,6 +190,37 @@ if (command === "doctor") {
   });
   for (const l of formatDoctor(report)) console.log(l);
   process.exit(report.exitCode);
+}
+
+// a2a send (v2.0 slice 4) runs before the engine too — it is a pure outbound client: no db,
+// no policy, no .state side effect. The executor command template calls it with
+// $DSH_TARGET_URL/$DSH_PROMPT_FILE; a person can call it by hand against any dsh endpoint.
+if (command === "a2a") {
+  const sub = positionals[1] ?? "send";
+  if (sub !== "send") die(`unknown a2a subcommand: ${sub} (send)${WITH_HELP}`);
+  if (!args.url) die(`a2a send requires --url <endpoint> (e.g. http://node:8791/a2a)${WITH_HELP}`);
+  if (!args["prompt-file"]) die(`a2a send requires --prompt-file <file> (the delegated prompt)${WITH_HELP}`);
+  const token = args.token
+    ?? (args["token-file"] ? readFileSync(args["token-file"], "utf8").trim() : undefined)
+    ?? process.env.A2A_TOKEN;
+  if (!token) die(`a2a send needs a bearer: --token, --token-file, or env A2A_TOKEN${WITH_HELP}`);
+  const { a2aSend } = await import("./a2a.js");
+  const r = await a2aSend({
+    url: args.url,
+    token,
+    prompt: readFileSync(args["prompt-file"], "utf8"),
+    caller: args.caller ?? "dsh-cli",
+    wait: args.wait,
+    intervalMs: args.interval ? Number(args.interval) * 1000 : undefined,
+    log: (l) => console.log(l),
+  });
+  if (!args.wait) {
+    console.log(`task ${r.taskId} ${r.state} — poll ${args.url.replace(/\/+$/, "")}/tasks/${r.taskId}`);
+  } else {
+    console.log(`task ${r.taskId} ${r.state}`);
+    if (r.report) console.log(r.report);
+  }
+  process.exit(r.exitCode);
 }
 
 const engine = new Engine(args.db);
@@ -556,7 +593,9 @@ try {
       for (const t of rows) {
         const extra = [t.state === "ended" && t.stoppedBy ? `stopped-by:${t.stoppedBy}` : "",
           t.revokedReason ?? "", t.resumedCount ? `resumed×${t.resumedCount}` : "",
-          t.followUps ? `fu×${t.followUps}` : ""].filter(Boolean).join(" ");
+          t.followUps ? `fu×${t.followUps}` : "",
+          t.parent ? `parent=#${t.parent}` : "",
+          t.targetNode ? `→${t.targetNode}` : ""].filter(Boolean).join(" ");
         console.log(`#${t.id} [${t.stage}] ${t.strength} ${t.threadId} opener=${t.opener} ${extra}`.trimEnd());
       }
     }
